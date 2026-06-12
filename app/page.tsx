@@ -25,21 +25,51 @@ import RegistrationCard from '@/components/sidebar/RegistrationCard';
 import ServiceList from '@/components/sidebar/ServiceList';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
-import BottomPanel from '@/components/panel/BottomPanel';
+import RightPanel from '@/components/panel/RightPanel';
 
 // Modals
 import RegisterConfirmModal from '@/components/modals/RegisterConfirmModal';
 import WalletCreateModal from '@/components/modals/WalletCreateModal';
 
 // Lucide Icons
-import { Settings } from 'lucide-react';
+import { Loader2, Settings } from 'lucide-react';
 import Image from 'next/image';
+
+function AgentThinkingIndicator({ toolNames }: { toolNames: string[] }) {
+	const uniqueToolNames = Array.from(new Set(toolNames.filter(Boolean)));
+	const isUsingTool = uniqueToolNames.length > 0;
+
+	return (
+		<div
+			id='agent-thinking-indicator'
+			className='mb-4 flex items-center gap-2 px-1.5 text-xs text-zinc-500 dark:text-zinc-400'
+		>
+			<Loader2 className='h-3.5 w-3.5 animate-spin text-emerald-500' />
+			<span className='font-medium'>
+				{isUsingTool ? '正在调用工具' : '思考中'}
+			</span>
+			{isUsingTool && (
+				<span className='max-w-[70%] truncate rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'>
+					{uniqueToolNames.join(', ')}
+				</span>
+			)}
+			<span className='flex gap-0.5' aria-hidden='true'>
+				<span className='animate-pulse'>.</span>
+				<span className='animate-pulse [animation-delay:120ms]'>.</span>
+				<span className='animate-pulse [animation-delay:240ms]'>.</span>
+			</span>
+		</div>
+	);
+}
 
 export default function Home() {
 	// Global App States
 	const [walletAddress, setWalletAddress] = useState(
-		'0xCAW49fD2da59d28003fBceA1eBa6f8fe9E34BD9e',
+		process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS ||
+			'0x8c25ddf08fd51cfc9a3985b765a9be2095a347c1',
 	);
+	const agentId =
+		process.env.NEXT_PUBLIC_AGENT_ID || 'caw_agent_906ad75e6d7c7a6c';
 	const [agentName, setAgentName] = useState('CoboAgent');
 	const [ethBalance, setEthBalance] = useState(0.5);
 	const [usdcBalance, setUsdcBalance] = useState(15.0);
@@ -66,6 +96,11 @@ export default function Home() {
 	} | null>(null);
 
 	const messageEndRef = useRef<HTMLDivElement>(null);
+	const activeToolNames = chatMessages
+		.filter((msg) => msg.sender === 'agent')
+		.flatMap((msg) => msg.toolCalls ?? [])
+		.filter((call) => call.status === 'running')
+		.map((call) => call.name);
 
 	// Auto scroll to latest chats
 	useEffect(() => {
@@ -335,7 +370,7 @@ export default function Home() {
 
 		setChains(
 			INITIAL_CHAINS.map((c) =>
-				c.chainId === 'base-sepolia' ? { ...c, tokenId: '#14298' } : c,
+				c.chainId === 'eth-sepolia' ? { ...c, tokenId: '#14298' } : c,
 			),
 		);
 
@@ -370,283 +405,109 @@ export default function Home() {
 		);
 	};
 
-	// 6. Dynamic Chat Engine parsing User Messages
-	const handleChatMessageSend = (userText: string) => {
+	// 6. Send message to real Agent API with streaming
+	const handleChatMessageSend = async (userText: string) => {
 		const timeNow = new Date().toLocaleTimeString([], {
 			hour: '2-digit',
 			minute: '2-digit',
+			second: '2-digit',
 		});
 
+		const agentMsgId = 'agent-' + Date.now();
+
+		// Add user message
 		setChatMessages((prev) => [
 			...prev,
 			{
-				id: 'user-msg-' + Date.now(),
+				id: 'user-' + Date.now(),
 				sender: 'user' as const,
 				time: timeNow,
 				content: userText,
 			},
 		]);
 
+		// Add placeholder agent message for streaming
+		setChatMessages((prev) => [
+			...prev,
+			{
+				id: agentMsgId,
+				sender: 'agent' as const,
+				time: timeNow,
+				content: '',
+			},
+		]);
+
 		setIsAgentReplying(true);
 
-		const norm = userText.toLowerCase();
-
-		setTimeout(() => {
-			const settleTime = new Date().toLocaleTimeString([], {
-				hour: '2-digit',
-				minute: '2-digit',
+		try {
+			const response = await fetch('/api/chat', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ message: userText }),
 			});
-			const agentMsgId = 'agent-reply-' + Date.now();
-			let outcomeContent = '';
-			let toolsUsed: ToolCall[] = [];
 
-			if (
-				norm.includes('analysis') ||
-				norm.includes('service') ||
-				norm.includes('analyzer')
-			) {
-				const matchingSvc =
-					services.find(
-						(s) =>
-							norm.includes(s.id) ||
-							norm.includes('analysis') ||
-							norm.includes(s.name.toLowerCase()),
-					) || services[0];
-				const cost = parseFloat(matchingSvc.price);
-
-				if (usdcBalance < cost) {
-					const failLog: LogType = {
-						id: Date.now() + 10,
-						time: settleTime,
-						category: 'error',
-						description: `Paid API call aborted: Insufficient USDC balance (Required: ${cost}, Owned: ${usdcBalance.toFixed(2)})`,
-						status: 'failed',
-					};
-					setLogs((prev) => [failLog, ...prev]);
-
-					outcomeContent = `Failed to process micro-payment for "${matchingSvc.name}". The service requires ${cost} USDC, but your vault only holds ${usdcBalance.toFixed(2)} USDC. Please trigger the [Deposit] option on the sidebar to replenish funds and retry.`;
-
-					setChatMessages((prev) => [
-						...prev,
-						{
-							id: agentMsgId,
-							sender: 'agent' as const,
-							time: settleTime,
-							content: outcomeContent,
-						},
-					]);
-				} else {
-					setUsdcBalance((prev) => Math.max(0, prev - cost));
-
-					const rTxHash =
-						'0x' +
-						Array.from({ length: 40 }, () =>
-							Math.floor(Math.random() * 16).toString(16),
-						).join('');
-
-					const discoveryTool: ToolCall = {
-						id: 't-disc-' + Date.now(),
-						name: 'discoverServices',
-						parameters: { query: matchingSvc.name },
-						result: {
-							matchedEntriesCount: 1,
-							matchedList: [
-								{
-									id: matchingSvc.id,
-									name: matchingSvc.name,
-									provider: matchingSvc.provider,
-									cost: `${matchingSvc.price} ${matchingSvc.pricingToken}`,
-								},
-							],
-						},
-						status: 'success',
-					};
-
-					const payTool: ToolCall = {
-						id: 't-pay-' + Date.now(),
-						name: 'settleMicroPayment',
-						parameters: {
-							recipient: matchingSvc.provider,
-							amount: matchingSvc.price,
-							token: matchingSvc.pricingToken,
-							endpoint: matchingSvc.url,
-						},
-						result: {
-							paymentSettleState: 'SETTLED',
-							blockchainTxHash: rTxHash,
-							serviceResponsePayloadLength: '1240 bytes',
-							httpStatusCode: 200,
-						},
-						status: 'success',
-					};
-
-					toolsUsed = [discoveryTool, payTool];
-
-					if (matchingSvc.id === 'eth-analyzer') {
-						outcomeContent =
-							`Settled ${cost} USDC micro-payment successfully to provider "${matchingSvc.provider}" (Receipt: ${rTxHash.slice(0, 10)}...).\n\nHere is the real-time on-chain analysis payload we retreived for ETH:\n\n` +
-							`📊 ETH NETWORK METRICS REPORT:\n` +
-							`• Current Gas Threshold: 12.4 Gwei (Highly cost-efficient zone)\n` +
-							`• 24h Average Transaction Settle speed: ~12.2 seconds\n` +
-							`• Top Gas Consuming Contract: Uniswap V3 Pool Router (33.1% gas fraction)\n` +
-							`• Active smart-agents count: 14,809 daily endpoints\n\n` +
-							`The predictive gas threshold has been queued inside state logs.`;
-					} else if (matchingSvc.id === 'mkt-prediction') {
-						outcomeContent =
-							`Settled ${cost} USDC micro-payment successfully to provider "${matchingSvc.provider}" (Receipt: ${rTxHash.slice(0, 10)}...).\n\nHere is the statistical oracle price prediction response:\n\n` +
-							`📈 ALPHA ORACLE sentiment report:\n` +
-							`• Short-term volatility coefficient: 2.14% (Moderate consolidation)\n` +
-							`• Relative Strength Indicator (RSI): 54.8 (Stable baseline)\n` +
-							`• Probability of breakout within 12h: 64% (Consensus direction: BULLISH)\n` +
-							`• 24h Pivot support limit: $3,210.00 USD`;
-					} else {
-						outcomeContent = `Settled ${cost} ${matchingSvc.pricingToken} micropayment to "${matchingSvc.provider}".\n\nGas Optimizer response:\n• Base optimal fee: 11 Gwei\n• High priority fee: 15 Gwei\n• Recommended maximum slippage buffer: 0.15%`;
-					}
-
-					const newTx: Transaction = {
-						id: Date.now(),
-						time: settleTime,
-						type: 'Payment',
-						counterparty: `Svc Call: ${matchingSvc.name}`,
-						token: matchingSvc.pricingToken,
-						amount: cost,
-						status: 'success',
-						txHash: rTxHash,
-					};
-
-					const newLog: LogType = {
-						id: Date.now() + 1,
-						time: settleTime,
-						category: 'pay',
-						description: `Payment settled of ${cost} ${matchingSvc.pricingToken} for API call: ${matchingSvc.name}`,
-						status: 'success',
-					};
-
-					setTransactions((prev) => [newTx, ...prev]);
-					setLogs((prev) => [newLog, ...prev]);
-					setChatMessages((prev) => [
-						...prev,
-						{
-							id: agentMsgId,
-							sender: 'agent' as const,
-							time: settleTime,
-							content: outcomeContent,
-							toolCalls: toolsUsed,
-						},
-					]);
-					showToast(`Micro-payment completed: ${cost} USDC`, 'success');
-				}
-			} else if (
-				norm.includes('register') ||
-				norm.includes('binding') ||
-				norm.includes('sepolia')
-			) {
-				const targetChain = chains.find(
-					(c) =>
-						norm.includes(c.chainId) || norm.includes(c.name.toLowerCase()),
+			// Check if response is an error (JSON, not stream)
+			const contentType = response.headers.get('content-type') || '';
+			if (!response.ok || contentType.includes('application/json')) {
+				const errorData = await response
+					.json()
+					.catch(() => ({ error: `HTTP ${response.status}` }));
+				throw new Error(
+					errorData.error || `Agent API error: ${response.status}`,
 				);
-
-				if (targetChain) {
-					if (targetChain.registered) {
-						outcomeContent = `Cobo Agent Wallet is already fully registered on the ${targetChain.name} Registry contract (Token ID: ${targetChain.tokenId}, address: ${targetChain.registryAddress}). No duplicates can be registered.`;
-					} else if (targetChain.status === 'upcoming') {
-						outcomeContent = `ERC-8004 Registry bindings for ${targetChain.name} are coming soon. The contract endpoints are currently in offline audit phases.`;
-					} else {
-						outcomeContent = `I detected that ${targetChain.name} Registry binding is currently inactive. Would you like me to dispatch a secure cryptographic register sequence? \n\nPlease select the "Register Identifiers" button on the sidebar to authorize this permanent link.`;
-					}
-				} else {
-					outcomeContent = `To register your agent identifier onto an ERC-8004 multi-chain contract, click on the **Register Identifiers** button under the registry list of your desired chain. Currently supporting Base Sepolia and ETH Sepolia.`;
-				}
-
-				setChatMessages((prev) => [
-					...prev,
-					{
-						id: agentMsgId,
-						sender: 'agent' as const,
-						time: settleTime,
-						content: outcomeContent,
-					},
-				]);
-			} else if (norm.includes('transfer') || norm.includes('send')) {
-				outcomeContent = `To transfer ETH or USDC assets on-chain, please utilize the **Transfer** option located inside the Agent Wallet block on the left sidebar. This lets you inspect gas metrics, input target receivers, verify balances, and finalize signatures.`;
-				setChatMessages((prev) => [
-					...prev,
-					{
-						id: agentMsgId,
-						sender: 'agent' as const,
-						time: settleTime,
-						content: outcomeContent,
-					},
-				]);
-			} else if (
-				norm.includes('balance') ||
-				norm.includes('query') ||
-				norm.includes('status')
-			) {
-				const queryTool: ToolCall = {
-					id: 't-query-' + Date.now(),
-					name: 'queryMultiChainLedger',
-					parameters: {
-						address: walletAddress,
-						chains: chains.map((c) => c.chainId),
-					},
-					result: {
-						queriedAddress: walletAddress,
-						ethLedgerBalance: ethBalance.toString(),
-						usdcLedgerBalance: usdcBalance.toString(),
-						activeRegistriesCount: chains.filter((c) => c.registered).length,
-					},
-					status: 'success',
-				};
-
-				const regCount = chains.filter((c) => c.registered).length;
-				outcomeContent =
-					`Vault ledger status queried successfully.\n\n💼 MULTI-CHAIN LEDGER STATUS:\n` +
-					`• Wallet Address: ${walletAddress}\n` +
-					`• ETH Balance: ${ethBalance.toFixed(4)} ETH\n` +
-					`• USDC Balance: $${usdcBalance.toFixed(2)} USDC\n` +
-					`• Active Identifier registry binds: ${regCount} of ${chains.length} chains`;
-
-				const newLog: LogType = {
-					id: Date.now() + 1,
-					time: settleTime,
-					category: 'query',
-					description: `Queried wallet ledger details: ETH ${ethBalance.toFixed(4)}, USDC $${usdcBalance.toFixed(2)}`,
-					status: 'success',
-				};
-
-				setLogs((prev) => [newLog, ...prev]);
-				setChatMessages((prev) => [
-					...prev,
-					{
-						id: agentMsgId,
-						sender: 'agent' as const,
-						time: settleTime,
-						content: outcomeContent,
-						toolCalls: [queryTool],
-					},
-				]);
-			} else {
-				outcomeContent =
-					`Understood. My agentic pipeline is online. How can I assist you with your sovereign digital wallet today?\n\n` +
-					`💡 Recommended Actions:\n` +
-					`• "Query balance & registry statuses" to scan active ledger balances.\n` +
-					`• "Run ETH Chain Analysis" to invoke paid provider service endpoints (costs $0.001 USDC).\n` +
-					`• Click the **Register Identifiers** on the left to permanently bind identifiers onto blockchain smart contract registries.\n`;
-
-				setChatMessages((prev) => [
-					...prev,
-					{
-						id: agentMsgId,
-						sender: 'agent' as const,
-						time: settleTime,
-						content: outcomeContent,
-					},
-				]);
 			}
 
+			// Stream the response - toTextStreamResponse() sends raw text chunks
+			const reader = response.body?.getReader();
+			const decoder = new TextDecoder();
+			let fullText = '';
+
+			if (reader) {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+
+					const chunk = decoder.decode(value, { stream: true });
+					fullText += chunk;
+
+					// Update the agent message in real-time
+					setChatMessages((prev) =>
+						prev.map((msg) =>
+							msg.id === agentMsgId ? { ...msg, content: fullText } : msg,
+						),
+					);
+				}
+			}
+
+			// If no streaming content received, show a fallback
+			if (!fullText) {
+				setChatMessages((prev) =>
+					prev.map((msg) =>
+						msg.id === agentMsgId
+							? {
+									...msg,
+									content:
+										'Agent 处理完成，但未返回文本。请检查交易记录或日志。',
+								}
+							: msg,
+					),
+				);
+			}
+		} catch (error) {
+			console.error('Agent error:', error);
+			setChatMessages((prev) =>
+				prev.map((msg) =>
+					msg.id === agentMsgId
+						? {
+								...msg,
+								content: `Error: ${error instanceof Error ? error.message : 'Failed to reach agent. Ensure the AI API key is configured.'}`,
+							}
+						: msg,
+				),
+			);
+		} finally {
 			setIsAgentReplying(false);
-		}, 1200);
+		}
 	};
 
 	return (
@@ -667,7 +528,7 @@ export default function Home() {
 							alt='Cobo Agentic Wallet'
 							width={65}
 							height={65}
-							className='rounded-md'
+							className='rounded-md dark:invert'
 							priority
 						/>
 						<span className='font-display font-semibold text-xs tracking-tight text-zinc-700 dark:text-zinc-300'>
@@ -723,26 +584,19 @@ export default function Home() {
 					className='h-14.5 border-b border-zinc-200 dark:border-zinc-800 px-5 bg-white dark:bg-zinc-950 flex items-center justify-between shrink-0'
 				>
 					<div className='flex items-center gap-2.5'>
-						<Image
-							src='/logo.png'
-							alt='Logo'
-							width={20}
-							height={20}
-							className='rounded-sm'
-						/>
 						<span
 							id='active-agent-info'
 							className='text-xs font-mono font-bold tracking-tight text-zinc-800 dark:text-zinc-200'
 						>
 							Agent ID:{' '}
 							<span className='bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-zinc-900 dark:text-white'>
-								{agentName}
+								{agentId}
 							</span>
 						</span>
 					</div>
 
 					<div className='flex items-center gap-2.5'>
-						<NetworkBadge network='Base Sepolia Testnet' />
+						<NetworkBadge network='ETH Sepolia Testnet' />
 						<ThemeToggle />
 					</div>
 				</header>
@@ -752,37 +606,16 @@ export default function Home() {
 					id='chat-history-viewport'
 					className='flex-1 overflow-y-auto p-5 space-y-4 bg-zinc-50/20 dark:bg-zinc-950/20'
 				>
-					{chatMessages.map((msg) => (
-						<ChatMessage
-							key={msg.id}
-							message={msg}
-						/>
-					))}
-
-					{/* Chat reply typing loader placeholder */}
-					{isAgentReplying && (
-						<div
-							id='agent-typing-bubble'
-							className='flex flex-col items-start mb-4 animate-pulse'
-						>
-							<div className='flex items-center gap-1.5 mb-1.5'>
-								<span className='text-[11px] font-semibold text-zinc-800 dark:text-zinc-205 flex items-center gap-1'>
-									<Image
-										src='/logo.png'
-										alt='Agent'
-										width={12}
-										height={12}
-										className='rounded-sm animate-pulse'
-									/>
-									<span>Agent Settle Process...</span>
-								</span>
-								<span className='text-[10px] text-zinc-400'>just now</span>
-							</div>
-							<div className='bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-850 rounded-lg px-4 py-3 max-w-[80%] text-sm text-zinc-400 font-mono'>
-								Running ledger query and state-update logic...
-							</div>
-						</div>
+					{chatMessages.map((msg) =>
+						msg.sender === 'agent' && !msg.content && !msg.toolCalls?.length ? null : (
+							<ChatMessage
+								key={msg.id}
+								message={msg}
+							/>
+						),
 					)}
+
+					{isAgentReplying && <AgentThinkingIndicator toolNames={activeToolNames} />}
 
 					<div ref={messageEndRef} />
 				</section>
@@ -792,13 +625,13 @@ export default function Home() {
 					onSendMessage={handleChatMessageSend}
 					disabled={isAgentReplying}
 				/>
-
-				{/* Resizable, collapsible bottom records table */}
-				<BottomPanel
-					transactions={transactions}
-					logs={logs}
-				/>
 			</main>
+
+			{/* 2b. Right Panel - Transactions & Logs */}
+			<RightPanel
+				transactions={transactions}
+				logs={logs}
+			/>
 
 			{/* 3. MODALS AND NOTIFIERS BAR */}
 

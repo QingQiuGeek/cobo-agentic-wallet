@@ -8,10 +8,9 @@ interface ChatInputProps {
 }
 
 const SUGGESTIONS = [
-  'Register on ETH Sepolia',
-  'Run ETH Chain Analysis ($0.001 USDC)',
-  'Transfer 0.02 ETH to liquidity pool',
-  'Query balance & registry statuses'
+  '查询钱包余额',
+  '调用 ETH 链上分析（0.0001 ETH）',
+  '查询最近交易记录',
 ];
 
 export default function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
@@ -35,7 +34,7 @@ export default function ChatInput({ onSendMessage, disabled = false }: ChatInput
       <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-none items-center">
         <span className="text-[10px] uppercase font-mono font-bold text-zinc-400 dark:text-zinc-500 flex items-center gap-1 shrink-0 mr-1">
           <Zap className="h-2.5 w-2.5 text-amber-500 animate-pulse" />
-          <span>Quick tasks:</span>
+          <span>快捷指令:</span>
         </span>
         {SUGGESTIONS.map((suggestion, index) => (
           <button
@@ -57,7 +56,7 @@ export default function ChatInput({ onSendMessage, disabled = false }: ChatInput
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={disabled ? 'Working on transaction...' : 'Ask agent to register, transfer, or search APIs...'}
+          placeholder={disabled ? 'Agent 处理中...' : '输入指令，如：查询余额、调用付费服务、转账...'}
           className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-zinc-800 dark:focus:border-zinc-350 focus:bg-white dark:focus:bg-zinc-950 transition-all font-mono"
           disabled={disabled}
           autoComplete="off"

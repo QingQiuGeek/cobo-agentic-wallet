@@ -35,7 +35,7 @@ export const GET = withX402(
   {
     accepts: {
       scheme: "exact",
-      price: "$0.001",
+      price: "0.0001",
       network: NETWORK,
       payTo: PAYEE_ADDRESS,
     },
