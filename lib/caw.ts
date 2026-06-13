@@ -3,6 +3,8 @@
  *
  * Wraps the @cobo/agentic-wallet SDK into a clean service interface.
  * All CAW operations go through this module.
+ *
+ * 钱包 UUID 动态管理：初始从 .env 读取，用户切换钱包后更新。
  */
 
 import {
@@ -25,37 +27,53 @@ const config = new Configuration({
 });
 
 // API instances
-const walletsApi = new WalletsApi(config);
-const balanceApi = new BalanceApi(config);
-const transactionsApi = new TransactionsApi(config);
-const transactionRecordsApi = new TransactionRecordsApi(config);
-const pactsApi = new PactsApi(config);
-const faucetApi = new FaucetApi(config);
-const auditApi = new AuditApi(config);
-const identityApi = new IdentityApi(config);
-const metadataApi = new MetadataApi(config);
+export const walletsApi = new WalletsApi(config);
+export const balanceApi = new BalanceApi(config);
+export const transactionsApi = new TransactionsApi(config);
+export const transactionRecordsApi = new TransactionRecordsApi(config);
+export const pactsApi = new PactsApi(config);
+export const faucetApi = new FaucetApi(config);
+export const auditApi = new AuditApi(config);
+export const identityApi = new IdentityApi(config);
+export const metadataApi = new MetadataApi(config);
 
-// Wallet ID from env
-const WALLET_ID = process.env.AGENT_WALLET_WALLET_ID || "";
+// Dynamic wallet UUID - initial from env, updated on wallet switch
+let currentWalletUuid = process.env.AGENT_WALLET_WALLET_ID || "";
+
+export function getCurrentWalletUuid() {
+  return currentWalletUuid;
+}
+
+export function setCurrentWalletUuid(uuid: string) {
+  currentWalletUuid = uuid;
+}
 
 // ============================================================
 // Wallet Operations
 // ============================================================
 
-export async function getWalletInfo() {
-  const response = await walletsApi.getWallet(WALLET_ID);
+export async function getWalletInfo(walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await walletsApi.getWallet(uuid);
   return response.data;
 }
 
-export async function listWallets() {
-  const response = await walletsApi.listWallets();
+export async function listWallets(limit = 50) {
+  const response = await walletsApi.listWallets(undefined, undefined, 0, limit);
   return response.data;
 }
 
-export async function createWalletAddress(chainId: string) {
-  const response = await walletsApi.createWalletAddress(WALLET_ID, {
+export async function createWalletAddress(chainId: string, walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await walletsApi.createWalletAddress(uuid, {
     chain_id: chainId,
   });
+  return response.data;
+}
+
+export async function listWalletAddresses(walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await walletsApi.listWalletAddresses(uuid);
   return response.data;
 }
 
@@ -63,13 +81,15 @@ export async function createWalletAddress(chainId: string) {
 // Balance Operations
 // ============================================================
 
-export async function getBalances() {
-  const response = await balanceApi.listBalances(WALLET_ID);
+export async function getBalances(walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await balanceApi.listBalances(uuid);
   return response.data;
 }
 
-export async function getBalanceForToken(tokenId: string) {
-  const response = await balanceApi.listBalances(WALLET_ID, undefined, undefined, tokenId);
+export async function getBalanceForToken(tokenId: string, walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await balanceApi.listBalances(uuid, undefined, undefined, tokenId);
   return response.data;
 }
 
@@ -82,8 +102,10 @@ export async function transferTokens(params: {
   dstAddr: string;
   amount: string;
   requestId?: string;
+  walletUuid?: string;
 }) {
-  const response = await transactionsApi.transferTokens(WALLET_ID, {
+  const uuid = params.walletUuid || currentWalletUuid;
+  const response = await transactionsApi.transferTokens(uuid, {
     token_id: params.tokenId,
     dst_addr: params.dstAddr,
     amount: params.amount,
@@ -98,8 +120,10 @@ export async function contractCall(params: {
   calldata: string;
   value?: string;
   requestId?: string;
+  walletUuid?: string;
 }) {
-  const response = await transactionsApi.contractCall(WALLET_ID, {
+  const uuid = params.walletUuid || currentWalletUuid;
+  const response = await transactionsApi.contractCall(uuid, {
     chain_id: params.chainId,
     contract_addr: params.contractAddr,
     calldata: params.calldata,
@@ -113,8 +137,10 @@ export async function estimateTransferFee(params: {
   tokenId: string;
   dstAddr: string;
   amount: string;
+  walletUuid?: string;
 }) {
-  const response = await transactionsApi.estimateTransferFee(WALLET_ID, {
+  const uuid = params.walletUuid || currentWalletUuid;
+  const response = await transactionsApi.estimateTransferFee(uuid, {
     token_id: params.tokenId,
     dst_addr: params.dstAddr,
     amount: params.amount,
@@ -123,11 +149,12 @@ export async function estimateTransferFee(params: {
 }
 
 // ============================================================
-// x402 Payment
+// x402 Payment（CAW 原生支持，无需 @x402/fetch）
 // ============================================================
 
-export async function payX402(challenge: Record<string, unknown>) {
-  const response = await transactionsApi.payment(WALLET_ID, {
+export async function payX402(challenge: Record<string, unknown>, walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await transactionsApi.payment(uuid, {
     protocol: "x402",
     x402_payment_required: Buffer.from(JSON.stringify(challenge)).toString("base64"),
     request_id: `x402-${Date.now()}`,
@@ -139,13 +166,17 @@ export async function payX402(challenge: Record<string, unknown>) {
 // Transaction Records
 // ============================================================
 
-export async function getTransactionRecords(limit = 20) {
-  const response = await transactionRecordsApi.listUserTransactions(WALLET_ID, undefined, undefined, undefined, limit);
+export async function getTransactionRecords(limit = 20, walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await transactionRecordsApi.listUserTransactions(
+    uuid, undefined, undefined, undefined, limit
+  );
   return response.data;
 }
 
-export async function getTransactionByRequestId(requestId: string) {
-  const response = await transactionRecordsApi.getUserTransactionByRequestId(WALLET_ID, requestId);
+export async function getTransactionByRequestId(requestId: string, walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await transactionRecordsApi.getUserTransactionByRequestId(uuid, requestId);
   return response.data;
 }
 
@@ -164,9 +195,11 @@ export async function submitPact(params: {
     type: "time_elapsed" | "tx_count" | "amount_spent" | "amount_spent_usd" | "manual";
     threshold?: string;
   }>;
+  walletUuid?: string;
 }) {
+  const uuid = params.walletUuid || currentWalletUuid;
   const response = await pactsApi.submitPact({
-    wallet_id: WALLET_ID,
+    wallet_id: uuid,
     intent: params.intent,
     spec: {
       policies: params.policies,
@@ -183,8 +216,9 @@ export async function getPact(pactId: string) {
   return response.data;
 }
 
-export async function listPacts() {
-  const response = await pactsApi.listPacts();
+export async function listPacts(walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await pactsApi.listPacts(undefined, uuid);
   return response.data;
 }
 
@@ -209,9 +243,11 @@ export async function listFaucetTokens() {
 // Audit Operations
 // ============================================================
 
-export async function getAuditLogs(limit = 20) {
+export async function getAuditLogs(limit = 20, walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
   const response = await auditApi.listAuditLogs(
-    WALLET_ID, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, limit
+    uuid, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, limit
   );
   return response.data;
 }
@@ -243,9 +279,10 @@ export async function getAgentStatus(agentId: string) {
 // Wallet Pairing
 // ============================================================
 
-export async function initiateWalletPair() {
+export async function initiateWalletPair(walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
   const response = await walletsApi.initiateWalletPair({
-    wallet_id: WALLET_ID,
+    wallet_id: uuid,
   });
   return response.data;
 }
@@ -257,20 +294,8 @@ export async function confirmWalletPair(token: string) {
   return response.data;
 }
 
-// ============================================================
-// Export all API instances for advanced usage
-// ============================================================
-
-export {
-  walletsApi,
-  balanceApi,
-  transactionsApi,
-  transactionRecordsApi,
-  pactsApi,
-  faucetApi,
-  auditApi,
-  identityApi,
-  metadataApi,
-  config,
-  WALLET_ID,
-};
+export async function getPairInfoByWallet(walletUuid?: string) {
+  const uuid = walletUuid || currentWalletUuid;
+  const response = await walletsApi.getPairInfoByWallet(uuid);
+  return response.data;
+}

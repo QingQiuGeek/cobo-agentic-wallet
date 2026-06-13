@@ -1,41 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requestFaucetTokens, listFaucetTokens } from "@/lib/caw";
+import { faucetApi, getCurrentWalletUuid, listWalletAddresses } from "@/lib/caw";
 
-// POST /api/wallet/faucet - Request testnet tokens
+// POST /api/wallet/faucet - Claim testnet tokens
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { tokenId, address } = body;
+    const body = await req.json().catch(() => ({}));
+    const { tokenId = "SETH" } = body;
 
-    if (!tokenId || !address) {
+    const walletUuid = getCurrentWalletUuid();
+    console.log("[/api/wallet/faucet] Claiming", tokenId, "for wallet:", walletUuid);
+
+    if (!walletUuid) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: tokenId, address" },
+        { success: false, error: "No wallet configured" },
         { status: 400 }
       );
     }
 
-    const result = await requestFaucetTokens(tokenId, address);
+    // Get wallet address
+    const addressesResp = await listWalletAddresses(walletUuid);
+    const addrResult = addressesResp.result as any;
+    const addressList = Array.isArray(addrResult) ? addrResult : addrResult?.items || [];
+    const address = addressList[0]?.address;
 
-    return NextResponse.json({ success: true, result });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
-  }
-}
+    if (!address) {
+      return NextResponse.json(
+        { success: false, error: "No address found for wallet" },
+        { status: 400 }
+      );
+    }
 
-// GET /api/wallet/faucet - List available faucet tokens
-export async function GET() {
-  try {
-    const result = await listFaucetTokens();
-    return NextResponse.json({ success: true, ...result });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    console.log("[/api/wallet/faucet] Depositing to:", address, "token:", tokenId);
+
+    const result = await faucetApi.deposit({
+      address: address,
+      token_id: tokenId,
+    });
+
+    console.log("[/api/wallet/faucet] Result:", JSON.stringify(result.data));
+
+    return NextResponse.json({
+      success: true,
+      ...result.data,
+    });
+  } catch (error: any) {
+    console.error("[/api/wallet/faucet] Error:", error?.response?.data || error?.message || error);
     return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
+      {
+        success: false,
+        error: error?.response?.data?.message || error?.message || "Unknown error",
+        details: error?.response?.data,
+      },
+      { status: error?.response?.status || 500 }
     );
   }
 }

@@ -7,7 +7,7 @@
 
 import { tool, zodSchema } from 'ai';
 import { z } from 'zod';
-import { getBalances, transferTokens, getTransactionRecords } from './caw';
+import { getBalances, transferTokens, getTransactionRecords, getTransactionByRequestId } from './caw';
 
 // ============================================================
 // Tool: discoverServices
@@ -188,6 +188,28 @@ const getTransactionStatus = tool({
 });
 
 // ============================================================
+// Tool: getTransactionDetails
+// ============================================================
+
+const getTransactionDetails = tool({
+	description:
+		'查询指定交易的详细信息，包含状态、金额、gas、区块号等。用于查看特定交易的完整详情。',
+	inputSchema: zodSchema(
+		z.object({
+			txHash: z
+				.string()
+				.regex(/^0x[a-fA-F0-9]{64}$/, '必须是有效的交易哈希（0x + 64位十六进制）')
+				.describe('交易哈希，如 0xabcdef1234567890...'),
+		}),
+	),
+	execute: async (args) => {
+		const { txHash } = args;
+		const details = await getTransactionByRequestId(txHash);
+		return details;
+	},
+});
+
+// ============================================================
 // Export all tools
 // ============================================================
 
@@ -197,4 +219,5 @@ export const AGENT_TOOLS = {
 	checkBalance,
 	makePayment,
 	getTransactionStatus,
+	getTransactionDetails,
 };

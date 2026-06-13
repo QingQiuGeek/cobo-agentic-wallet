@@ -21,6 +21,7 @@ import {
 import NetworkBadge from '@/components/NetworkBadge';
 import ThemeToggle from '@/components/ThemeToggle';
 import WalletCard from '@/components/sidebar/WalletCard';
+import FaucetCard from '@/components/sidebar/FaucetCard';
 import RegistrationCard from '@/components/sidebar/RegistrationCard';
 import ServiceList from '@/components/sidebar/ServiceList';
 import ChatMessage from '@/components/chat/ChatMessage';
@@ -64,13 +65,12 @@ function AgentThinkingIndicator({ toolNames }: { toolNames: string[] }) {
 
 export default function Home() {
 	// Global App States
-	const [walletAddress, setWalletAddress] = useState(
-		process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS ||
-			'0x8c25ddf08fd51cfc9a3985b765a9be2095a347c1',
-	);
 	const agentId =
 		process.env.NEXT_PUBLIC_AGENT_ID || 'caw_agent_906ad75e6d7c7a6c';
 	const [agentName, setAgentName] = useState('CoboAgent');
+	const [walletAddress, setWalletAddress] = useState(
+		process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS || '0x8c25ddf08fd51cfc9a3985b765a9be2095a347c1'
+	);
 	const [ethBalance, setEthBalance] = useState(0.5);
 	const [usdcBalance, setUsdcBalance] = useState(15.0);
 	const [isWalletConnected, setIsWalletConnected] = useState(false);
@@ -78,12 +78,58 @@ export default function Home() {
 	// Lists
 	const [chains, setChains] = useState<ChainStatus[]>(INITIAL_CHAINS);
 	const [services] = useState<PaidService[]>(INITIAL_SERVICES);
-	const [transactions, setTransactions] =
-		useState<Transaction[]>(INITIAL_TRANSACTIONS);
-	const [logs, setLogs] = useState<LogType[]>(INITIAL_LOGS);
+	const [transactions, setTransactions] = useState<Transaction[]>([]);
+	const [logs, setLogs] = useState<LogType[]>([]);
 	const [chatMessages, setChatMessages] = useState<ChatMessageType[]>(
 		INITIAL_CHAT_MESSAGES,
 	);
+
+	// Fetch real data from CAW API
+	useEffect(() => {
+		const fetchRealData = async () => {
+			try {
+				// Fetch transaction records
+				// CAW response: { success, result: TransactionRecord[] }
+				const txResponse = await fetch('/api/wallet/transactions?limit=20');
+				const txData = await txResponse.json();
+				const txList = Array.isArray(txData.result) ? txData.result : [];
+				if (txData.success && txList.length > 0) {
+					const realTransactions = txList.map((tx: any, idx: number) => ({
+						id: idx + 1,
+						time: tx.created_at || new Date().toISOString(),
+						type: tx.type === 'transfer' ? 'Transfer' : tx.type === 'deposit' ? 'Deposit' : 'x402',
+						counterparty: tx.to_address || tx.from_address || 'Unknown',
+						token: tx.token_id?.includes('USDC') ? 'USDC' : 'ETH',
+						amount: parseFloat(tx.amount || '0'),
+						status: tx.status === 'success' ? 'success' : tx.status === 'pending' ? 'pending' : 'failed',
+						txHash: tx.tx_hash || tx.id,
+					}));
+					setTransactions(realTransactions);
+				}
+
+				// Fetch audit logs
+				// CAW response: { success, result: { items: AuditLog[] } }
+				const auditResponse = await fetch('/api/wallet/audit?limit=20');
+				const auditData = await auditResponse.json();
+				const auditItems = auditData.result?.items || [];
+				if (auditData.success && auditItems.length > 0) {
+					const realLogs = auditItems.map((log: any, idx: number) => ({
+						id: idx + 1,
+						time: log.created_at || log.timestamp || new Date().toISOString(),
+						category: log.action?.includes('transfer') ? 'transfer' : log.action?.includes('contract') ? 'register' : 'pay',
+						description: `${log.action || 'operation'}: ${log.result || 'completed'}`,
+						status: log.result === 'allowed' ? 'success' : log.result === 'denied' ? 'failed' : 'pending',
+					}));
+					setLogs(realLogs);
+				}
+			} catch (error) {
+				console.error('Failed to fetch real data:', error);
+				// Keep mock data if API fails
+			}
+		};
+
+		fetchRealData();
+	}, []);
 
 	// Auxiliary UI controls
 	const [isAgentReplying, setIsAgentReplying] = useState(false);
@@ -551,16 +597,22 @@ export default function Home() {
 					className='flex-1 overflow-y-auto p-4 flex flex-col gap-4'
 				>
 					<WalletCard
-						address={walletAddress}
-						ethBalance={ethBalance}
-						usdcBalance={usdcBalance}
-						isWalletConnected={isWalletConnected}
-						onConnectWallet={handleConnectWallet}
-						onCreateWallet={() => setShowConfigModal(true)}
-						onDeposit={handleDeposit}
-						onTransfer={handleTransfer}
 					/>
 
+
+					<FaucetCard
+						isWalletConnected={isWalletConnected}
+						onClaimSuccess={() => {
+							fetch("/api/wallet/status")
+								.then(r => r.json())
+								.then(data => {
+									if (data.success && data.connected) {
+										setIsWalletConnected(true);
+									}
+								})
+								.catch(() => {});
+						}}
+					/>
 					<RegistrationCard
 						chains={chains}
 						onInitiateRegister={initiateRegistration}
@@ -584,15 +636,19 @@ export default function Home() {
 					className='h-14.5 border-b border-zinc-200 dark:border-zinc-800 px-5 bg-white dark:bg-zinc-950 flex items-center justify-between shrink-0'
 				>
 					<div className='flex items-center gap-2.5'>
-						<span
-							id='active-agent-info'
-							className='text-xs font-mono font-bold tracking-tight text-zinc-800 dark:text-zinc-200'
-						>
-							Agent ID:{' '}
-							<span className='bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-zinc-900 dark:text-white'>
-								{agentId}
+						{isWalletConnected ? (
+							<span
+								id='active-agent-info'
+								className='text-xs font-mono font-bold tracking-tight text-zinc-800 dark:text-zinc-200'
+							>
+								Agent ID:{' '}
+								<span className='bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-zinc-900 dark:text-white'>
+									{agentId}
+								</span>
 							</span>
-						</span>
+						) : (
+							<span className='text-xs text-zinc-400'>未连接钱包</span>
+						)}
 					</div>
 
 					<div className='flex items-center gap-2.5'>

@@ -9,6 +9,9 @@ const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 export const metadata: Metadata = {
   title: "Cobo Agentic Wallet",
   description: "AI Agent Native Payments with Cobo Agentic Wallet",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
