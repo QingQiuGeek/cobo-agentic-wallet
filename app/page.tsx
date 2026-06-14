@@ -4,8 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import {
 	INITIAL_CHAINS,
 	INITIAL_SERVICES,
-	INITIAL_TRANSACTIONS,
-	INITIAL_LOGS,
 	INITIAL_CHAT_MESSAGES,
 } from '@/data/mockData';
 import {
@@ -36,29 +34,87 @@ import WalletCreateModal from '@/components/modals/WalletCreateModal';
 import { Loader2, Settings } from 'lucide-react';
 import Image from 'next/image';
 
+// Helper: Format ISO timestamp to YYYY-MM-DD HH:mm:ss
+function formatTime(isoString: string): string {
+  if (!isoString) return '—';
+  try {
+    const d = new Date(isoString);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch {
+    return isoString;
+  }
+}
+
+// Helper: Get token symbol from token_id
+function getTokenSymbol(tokenId: string): string {
+  if (!tokenId) return '?';
+  if (tokenId.includes('USDC')) return 'USDC';
+  if (tokenId.includes('USDT')) return 'USDT';
+  if (tokenId.includes('ETH')) return 'ETH';
+  if (tokenId.includes('SOL')) return 'SOL';
+  return tokenId.split('_').pop() || tokenId;
+}
+
+// Helper: Map audit action to category
+function getAuditCategory(action: string): 'pay' | 'transfer' | 'register' | 'query' | 'discover' {
+  if (!action) return 'query';
+  if (action.includes('transfer') || action.includes('payment')) return 'pay';
+  if (action.includes('contract')) return 'register';
+  if (action.includes('address') || action.includes('balance')) return 'query';
+  return 'query';
+}
+
+// Helper: Format audit action to human-readable
+function formatAuditAction(action: string): string {
+  if (!action) return 'Operation';
+  const map: Record<string, string> = {
+    'wallet.read': '查询钱包信息',
+    'wallet.address.list': '查询钱包地址',
+    'wallet.balances': '查询余额',
+    'user_transaction.list': '查询交易记录',
+    'transfer.initiate': '发起转账',
+    'contract_call.initiate': '调用合约',
+    'payment.initiate': '发起支付',
+  };
+  return map[action] || action;
+}
+
 function AgentThinkingIndicator({ toolNames }: { toolNames: string[] }) {
-	const uniqueToolNames = Array.from(new Set(toolNames.filter(Boolean)));
-	const isUsingTool = uniqueToolNames.length > 0;
+	const [expanded, setExpanded] = useState(false);
+	const uniqueTools = Array.from(new Set(toolNames.filter(Boolean)));
+	const hasTools = uniqueTools.length > 0;
 
 	return (
-		<div
-			id='agent-thinking-indicator'
-			className='mb-4 flex items-center gap-2 px-1.5 text-xs text-zinc-500 dark:text-zinc-400'
-		>
-			<Loader2 className='h-3.5 w-3.5 animate-spin text-emerald-500' />
-			<span className='font-medium'>
-				{isUsingTool ? '正在调用工具' : '思考中'}
-			</span>
-			{isUsingTool && (
-				<span className='max-w-[70%] truncate rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'>
-					{uniqueToolNames.join(', ')}
+		<div className='mb-4 mx-1.5'>
+			<div
+				onClick={() => hasTools && setExpanded(!expanded)}
+				className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 ${hasTools ? 'cursor-pointer' : ''}`}
+			>
+				<Loader2 className='h-3.5 w-3.5 animate-spin text-emerald-500' />
+				<span className='font-medium'>
+					{hasTools ? '正在调用工具' : '思考中'}
 				</span>
+				{hasTools && (
+					<span className='ml-auto font-mono text-[11px] text-zinc-400'>
+						{uniqueTools.length} 个工具
+					</span>
+				)}
+				<span className='flex gap-0.5' aria-hidden='true'>
+					<span className='animate-pulse'>.</span>
+					<span className='animate-pulse [animation-delay:120ms]'>.</span>
+					<span className='animate-pulse [animation-delay:240ms]'>.</span>
+				</span>
+			</div>
+			{expanded && hasTools && (
+				<div className='mt-1 ml-4 border-l-2 border-zinc-200 dark:border-zinc-700 pl-3 space-y-1'>
+					{uniqueTools.map((tool, i) => (
+						<div key={i} className='text-[10px] font-mono text-zinc-500 dark:text-zinc-400'>
+							<span className='text-emerald-600 dark:text-emerald-400'>●</span> {tool}
+						</div>
+					))}
+				</div>
 			)}
-			<span className='flex gap-0.5' aria-hidden='true'>
-				<span className='animate-pulse'>.</span>
-				<span className='animate-pulse [animation-delay:120ms]'>.</span>
-				<span className='animate-pulse [animation-delay:240ms]'>.</span>
-			</span>
 		</div>
 	);
 }
@@ -69,11 +125,10 @@ export default function Home() {
 		process.env.NEXT_PUBLIC_AGENT_ID || 'caw_agent_906ad75e6d7c7a6c';
 	const [agentName, setAgentName] = useState('CoboAgent');
 	const [walletAddress, setWalletAddress] = useState(
-		process.env.NEXT_PUBLIC_AGENT_WALLET_ADDRESS || '0x8c25ddf08fd51cfc9a3985b765a9be2095a347c1'
+		process.env.NEXT_PUBLIC_AGENT_WALLET_EVM_ADDRESS || '0xe6cf852aaac38144662c4f3af11c3d54197000e2'
 	);
-	const [ethBalance, setEthBalance] = useState(0.5);
-	const [usdcBalance, setUsdcBalance] = useState(15.0);
 	const [isWalletConnected, setIsWalletConnected] = useState(false);
+	const [walletUuid, setWalletUuid] = useState('');
 
 	// Lists
 	const [chains, setChains] = useState<ChainStatus[]>(INITIAL_CHAINS);
@@ -83,53 +138,139 @@ export default function Home() {
 	const [chatMessages, setChatMessages] = useState<ChatMessageType[]>(
 		INITIAL_CHAT_MESSAGES,
 	);
+	const abortControllerRef = useRef<AbortController | null>(null);
 
-	// Fetch real data from CAW API
+	// Stop agent processing
+	const handleStop = () => {
+		if (abortControllerRef.current) {
+			abortControllerRef.current.abort();
+			abortControllerRef.current = null;
+		}
+		setIsAgentReplying(false);
+	};
+
+	// 1. Fetch wallet status on mount (once)
 	useEffect(() => {
-		const fetchRealData = async () => {
+		const fetchWalletStatus = async () => {
 			try {
-				// Fetch transaction records
-				// CAW response: { success, result: TransactionRecord[] }
+				const statusResp = await fetch('/api/wallet/status');
+				const statusData = await statusResp.json();
+				if (statusData.success && statusData.connected) {
+					setIsWalletConnected(true);
+					setWalletUuid(statusData.wallet?.uuid || '');
+					if (statusData.wallet?.evmAddress) {
+						setWalletAddress(statusData.wallet.evmAddress);
+					}
+				} else {
+					setIsWalletConnected(false);
+				}
+			} catch (e) {
+				console.error('Failed to fetch wallet status:', e);
+			}
+		};
+		fetchWalletStatus();
+	}, []);
+
+	// 2. Poll transaction records every 3 seconds
+	useEffect(() => {
+		if (!isWalletConnected) return;
+
+		const fetchTransactions = async () => {
+			try {
 				const txResponse = await fetch('/api/wallet/transactions?limit=20');
 				const txData = await txResponse.json();
 				const txList = Array.isArray(txData.result) ? txData.result : [];
 				if (txData.success && txList.length > 0) {
 					const realTransactions = txList.map((tx: any, idx: number) => ({
 						id: idx + 1,
-						time: tx.created_at || new Date().toISOString(),
+						time: formatTime(tx.created_at),
 						type: tx.type === 'transfer' ? 'Transfer' : tx.type === 'deposit' ? 'Deposit' : 'x402',
-						counterparty: tx.to_address || tx.from_address || 'Unknown',
-						token: tx.token_id?.includes('USDC') ? 'USDC' : 'ETH',
+						from: tx.src_address || '—',
+						to: tx.dst_address || '—',
+						token: getTokenSymbol(tx.token_id),
 						amount: parseFloat(tx.amount || '0'),
-						status: tx.status === 'success' ? 'success' : tx.status === 'pending' ? 'pending' : 'failed',
-						txHash: tx.tx_hash || tx.id,
+						status: tx.status_display === 'Success' ? 'success' : tx.status_display === 'Pending' ? 'pending' : 'failed',
+						txHash: tx.transaction_hash || tx.id,
 					}));
 					setTransactions(realTransactions);
 				}
+			} catch (e) {
+				console.error('Failed to fetch transactions:', e);
+			}
+		};
 
-				// Fetch audit logs
-				// CAW response: { success, result: { items: AuditLog[] } }
+		// Initial fetch
+		fetchTransactions();
+		// Poll every 3 seconds
+		const interval = setInterval(fetchTransactions, 3000);
+		return () => clearInterval(interval);
+	}, [isWalletConnected]);
+
+	// 3. SSE for audit logs
+	useEffect(() => {
+		if (!isWalletConnected) return;
+
+		let eventSource: EventSource | null = null;
+
+		const connectSSE = () => {
+			eventSource = new EventSource('/api/wallet/audit/stream');
+
+			eventSource.onmessage = (event) => {
+				try {
+					const data = JSON.parse(event.data);
+					if (data.type === 'audit_log') {
+						const log = data.log;
+						const newLog: LogType = {
+							id: log.id || Date.now(),
+							time: formatTime(log.created_at),
+							category: getAuditCategory(log.action),
+							description: `${formatAuditAction(log.action)}: ${log.result || 'completed'}`,
+							status: log.result === 'allowed' ? 'success' : log.result === 'denied' ? 'failed' : 'pending',
+						};
+						setLogs(prev => [newLog, ...prev].slice(0, 100)); // Keep max 100 logs
+					}
+				} catch (e) {
+					console.error('SSE parse error:', e);
+				}
+			};
+
+			eventSource.onerror = () => {
+				// Reconnect after 5 seconds
+				setTimeout(() => {
+					if (eventSource) eventSource.close();
+					connectSSE();
+				}, 5000);
+			};
+		};
+
+		// Also fetch initial audit logs
+		const fetchInitialLogs = async () => {
+			try {
 				const auditResponse = await fetch('/api/wallet/audit?limit=20');
 				const auditData = await auditResponse.json();
 				const auditItems = auditData.result?.items || [];
 				if (auditData.success && auditItems.length > 0) {
 					const realLogs = auditItems.map((log: any, idx: number) => ({
 						id: idx + 1,
-						time: log.created_at || log.timestamp || new Date().toISOString(),
-						category: log.action?.includes('transfer') ? 'transfer' : log.action?.includes('contract') ? 'register' : 'pay',
-						description: `${log.action || 'operation'}: ${log.result || 'completed'}`,
+						time: formatTime(log.created_at),
+						category: getAuditCategory(log.action),
+						description: `${formatAuditAction(log.action)}: ${log.result || 'completed'}`,
 						status: log.result === 'allowed' ? 'success' : log.result === 'denied' ? 'failed' : 'pending',
 					}));
 					setLogs(realLogs);
 				}
-			} catch (error) {
-				console.error('Failed to fetch real data:', error);
-				// Keep mock data if API fails
+			} catch (e) {
+				console.error('Failed to fetch initial audit logs:', e);
 			}
 		};
 
-		fetchRealData();
-	}, []);
+		fetchInitialLogs();
+		connectSSE();
+
+		return () => {
+			if (eventSource) eventSource.close();
+		};
+	}, [isWalletConnected]);
 
 	// Auxiliary UI controls
 	const [isAgentReplying, setIsAgentReplying] = useState(false);
@@ -162,109 +303,6 @@ export default function Home() {
 		setTimeout(() => {
 			setToastMessage(null);
 		}, 4000);
-	};
-
-	// 1. Interactive Helper: Handle Mock Deposit
-	const handleDeposit = (token: 'ETH' | 'USDC', amount: number) => {
-		const timeNow = new Date().toLocaleTimeString([], {
-			hour: '2-digit',
-			minute: '2-digit',
-		});
-		const randomHash =
-			'0x' +
-			Array.from({ length: 40 }, () =>
-				Math.floor(Math.random() * 16).toString(16),
-			).join('');
-
-		if (token === 'ETH') {
-			setEthBalance((prev) => prev + amount);
-		} else {
-			setUsdcBalance((prev) => prev + amount);
-		}
-
-		const newTx: Transaction = {
-			id: Date.now(),
-			time: timeNow,
-			type: 'Deposit',
-			counterparty: 'User Wallet (Cobo Custody)',
-			token: token,
-			amount: amount,
-			status: 'success',
-			txHash: randomHash,
-		};
-
-		const newLog: LogType = {
-			id: Date.now() + 1,
-			time: timeNow,
-			category: 'query',
-			description: `Deposited ${amount} ${token} successfully. Dynamic balance refreshed.`,
-			status: 'success',
-		};
-
-		setTransactions((prev) => [newTx, ...prev]);
-		setLogs((prev) => [newLog, ...prev]);
-		showToast(`Deposited ${amount} ${token} to agent vault!`, 'success');
-	};
-
-	// 2. Interactive Helper: Handle Mock Transfer
-	const handleTransfer = (
-		token: 'ETH' | 'USDC',
-		destination: string,
-		amount: number,
-	) => {
-		const currentBalance = token === 'ETH' ? ethBalance : usdcBalance;
-		const timeNow = new Date().toLocaleTimeString([], {
-			hour: '2-digit',
-			minute: '2-digit',
-		});
-
-		if (amount > currentBalance) {
-			const failLog: LogType = {
-				id: Date.now(),
-				time: timeNow,
-				category: 'error',
-				description: `Transfer aborted: Insufficient ${token} balance (Requested: ${amount}, Owned: ${currentBalance.toFixed(4)})`,
-				status: 'failed',
-			};
-			setLogs((prev) => [failLog, ...prev]);
-			showToast(`Transfer failed: Insufficient ${token} balance.`, 'error');
-			return;
-		}
-
-		if (token === 'ETH') {
-			setEthBalance((prev) => prev - amount);
-		} else {
-			setUsdcBalance((prev) => prev - amount);
-		}
-
-		const randomHash =
-			'0x' +
-			Array.from({ length: 40 }, () =>
-				Math.floor(Math.random() * 16).toString(16),
-			).join('');
-
-		const newTx: Transaction = {
-			id: Date.now(),
-			time: timeNow,
-			type: 'Transfer',
-			counterparty: destination,
-			token: token,
-			amount: amount,
-			status: 'success',
-			txHash: randomHash,
-		};
-
-		const newLog: LogType = {
-			id: Date.now() + 1,
-			time: timeNow,
-			category: 'transfer',
-			description: `Transferred ${amount} ${token} to recipient ${destination.slice(0, 8)}...`,
-			status: 'success',
-		};
-
-		setTransactions((prev) => [newTx, ...prev]);
-		setLogs((prev) => [newLog, ...prev]);
-		showToast(`Transferred ${amount} ${token} on-chain!`, 'success');
 	};
 
 	// 3. Initiate ERC-8004 Registry
@@ -317,7 +355,6 @@ export default function Home() {
 				).join('');
 
 			const gasCost = 0.0012;
-			setEthBalance((prev) => Math.max(0, prev - gasCost));
 
 			setChains((prev) =>
 				prev.map((c) =>
@@ -362,7 +399,7 @@ export default function Home() {
 				id: Date.now(),
 				time: settleTime,
 				type: 'x402',
-				counterparty: `ERC-8004 Registry (${targetChain.name})`,
+				from: walletAddress, to: `ERC-8004 Registry (${targetChain.name})`,
 				token: 'ETH',
 				amount: gasCost,
 				status: 'success',
@@ -391,13 +428,6 @@ export default function Home() {
 		handleChatMessageSend(textCommand);
 	};
 
-	// 5. Connect Wallet (Paired mode)
-	const handleConnectWallet = () => {
-		// In a real app, this would open the Cobo App pairing flow
-		// For demo, we just show the wallet create modal in paired mode
-		setShowConfigModal(true);
-	};
-
 	// 5b. Create Wallet settings re-generation
 	const handleWalletCreate = (
 		newName: string,
@@ -411,8 +441,6 @@ export default function Home() {
 				Math.floor(Math.random() * 16).toString(16),
 			).join('');
 		setWalletAddress(randomAddress);
-		setEthBalance(0.5);
-		setUsdcBalance(15.0);
 
 		setChains(
 			INITIAL_CHAINS.map((c) =>
@@ -485,11 +513,16 @@ export default function Home() {
 
 		setIsAgentReplying(true);
 
+		// Create abort controller for this request
+		const abortController = new AbortController();
+		abortControllerRef.current = abortController;
+
 		try {
 			const response = await fetch('/api/chat', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ message: userText }),
+				signal: abortController.signal,
 			});
 
 			// Check if response is an error (JSON, not stream)
@@ -635,19 +668,20 @@ export default function Home() {
 					id='layout-navbar'
 					className='h-14.5 border-b border-zinc-200 dark:border-zinc-800 px-5 bg-white dark:bg-zinc-950 flex items-center justify-between shrink-0'
 				>
-					<div className='flex items-center gap-2.5'>
+					<div className="flex flex-col gap-0.5">
 						{isWalletConnected ? (
-							<span
-								id='active-agent-info'
-								className='text-xs font-mono font-bold tracking-tight text-zinc-800 dark:text-zinc-200'
-							>
-								Agent ID:{' '}
-								<span className='bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-zinc-900 dark:text-white'>
-									{agentId}
-								</span>
-							</span>
+							<>
+								<div className="flex items-center gap-2">
+									<span className="text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300">Agent_ID:</span>
+									<span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 select-all">{agentId}</span>
+								</div>
+								<div className="flex items-center gap-2">
+									<span className="text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300">Wallet_UUID:</span>
+									<span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 select-all">{walletUuid || "—"}</span>
+								</div>
+							</>
 						) : (
-							<span className='text-xs text-zinc-400'>未连接钱包</span>
+							<span className="text-sm text-zinc-400">未连接钱包</span>
 						)}
 					</div>
 
@@ -679,6 +713,7 @@ export default function Home() {
 				{/* Input Compositor */}
 				<ChatInput
 					onSendMessage={handleChatMessageSend}
+					onStop={handleStop}
 					disabled={isAgentReplying}
 				/>
 			</main>

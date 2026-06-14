@@ -1,4 +1,4 @@
-'use client'
+'use client';
 import { useState, useEffect } from 'react';
 import { Droplets, ChevronDown, ChevronUp, Check, Loader2 } from 'lucide-react';
 
@@ -21,18 +21,19 @@ export default function FaucetCard({ isWalletConnected, onClaimSuccess }: Faucet
   const [claimingToken, setClaimingToken] = useState<string | null>(null);
   const [claimedTokens, setClaimedTokens] = useState<Set<string>>(new Set());
 
-  // Fetch available tokens on mount
-  useEffect(() => {
-    fetchTokens();
-  }, []);
-
   const fetchTokens = async () => {
     try {
       setIsLoading(true);
+
+      // Get available faucet tokens
       const response = await fetch('/api/wallet/faucet/tokens');
       const data = await response.json();
       if (data.success && data.tokens) {
-        setTokens(data.tokens);
+        // Only show SETH tokens (SOLDEV faucet is unreliable)
+        const supported = data.tokens.filter((t: FaucetToken) =>
+          t.tokenId.startsWith('SETH')
+        );
+        setTokens(supported);
       }
     } catch (error) {
       console.error('Failed to fetch faucet tokens:', error);
@@ -40,6 +41,10 @@ export default function FaucetCard({ isWalletConnected, onClaimSuccess }: Faucet
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchTokens();
+  }, []);
 
   const handleClaim = async (tokenId: string) => {
     try {
@@ -51,7 +56,7 @@ export default function FaucetCard({ isWalletConnected, onClaimSuccess }: Faucet
       });
       const data = await response.json();
       if (data.success) {
-        setClaimedTokens(prev => new Set([...prev, tokenId]));
+        setClaimedTokens((prev) => new Set([...prev, tokenId]));
         if (onClaimSuccess) onClaimSuccess();
       } else {
         alert(`领取失败: ${data.error}`);
@@ -64,118 +69,77 @@ export default function FaucetCard({ isWalletConnected, onClaimSuccess }: Faucet
     }
   };
 
-  // Group tokens by chain
-  const tokensByChain = tokens.reduce((acc, token) => {
-    if (!acc[token.chainId]) acc[token.chainId] = [];
-    acc[token.chainId].push(token);
-    return acc;
-  }, {} as Record<string, FaucetToken[]>);
-
-  const getChainDisplayName = (chainId: string) => {
-    const names: Record<string, string> = {
-      'SETH': 'ETH Sepolia',
-      'BASE_ETH': 'Base',
-      'SOL': 'Solana',
-      'SOLDEV': 'Solana Devnet',
-    };
-    return names[chainId] || chainId;
-  };
-
-  const getTokenDisplayName = (tokenId: string) => {
-    if (tokenId.includes('USDC')) return 'USDC';
-    if (tokenId.includes('USDT')) return 'USDT';
-    if (tokenId.includes('ETH')) return 'ETH';
-    if (tokenId.includes('SOL')) return 'SOL';
-    return tokenId.split('_').pop() || tokenId;
-  };
-
-  if (!isWalletConnected) {
-    return null; // Don't show if wallet not connected
-  }
+  if (!isWalletConnected) return null;
 
   return (
-    <div id="sidebar-faucet-card" className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-950 shadow-sm transition-all">
+    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-950 shadow-sm">
       {/* Header */}
       <div
-        id="faucet-trigger"
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-between cursor-pointer select-none pb-2"
       >
         <div className="flex items-center gap-2">
           <Droplets className="h-4 w-4 text-blue-500" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Faucet</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            CoBo Faucet
+          </span>
           <span className="text-[10px] text-zinc-400">测试币水龙头</span>
         </div>
-        <button className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-0.5 rounded transition-colors focus:outline-none">
+        <button className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-0.5 rounded transition-colors">
           {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
       </div>
 
       {isOpen && (
-        <div id="faucet-card-content" className="pt-2 border-t border-zinc-100 dark:border-zinc-900 flex flex-col gap-3">
+        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-900">
           {isLoading ? (
             <div className="flex items-center justify-center py-4 text-zinc-400">
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              <span className="text-xs">Loading available tokens...</span>
+              <span className="text-xs">Loading tokens...</span>
             </div>
           ) : tokens.length === 0 ? (
             <div className="text-xs text-zinc-400 text-center py-4">
               No faucet tokens available
             </div>
           ) : (
-            Object.entries(tokensByChain).map(([chainId, chainTokens]) => (
-              <div key={chainId} className="flex flex-col gap-2">
-                {/* Chain header */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
-                    {getChainDisplayName(chainId)}
-                  </span>
-                  <span className="text-[9px] text-zinc-400 font-mono">{chainId}</span>
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+              {tokens.map((token) => {
+                const isClaimed = claimedTokens.has(token.tokenId);
+                const isClaiming = claimingToken === token.tokenId;
 
-                {/* Token buttons */}
-                <div className="grid grid-cols-2 gap-1.5">
-                  {chainTokens.map((token) => {
-                    const isClaimed = claimedTokens.has(token.tokenId);
-                    const isClaiming = claimingToken === token.tokenId;
-
-                    return (
-                      <button
-                        key={token.tokenId}
-                        onClick={() => handleClaim(token.tokenId)}
-                        disabled={isClaiming || isClaimed}
-                        className={`flex flex-col items-center justify-center gap-0.5 p-2 rounded-md border text-[10px] transition-all ${
-                          isClaimed
-                            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
-                            : isClaiming
-                            ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400'
-                            : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer'
-                        }`}
-                      >
-                        {isClaiming ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : isClaimed ? (
-                          <Check className="h-3 w-3 text-emerald-500" />
-                        ) : (
-                          <Droplets className="h-3 w-3 text-blue-400" />
-                        )}
-                        <span className="font-mono font-bold">
-                          {getTokenDisplayName(token.tokenId)}
-                        </span>
-                        <span className="text-[9px] text-zinc-400">
-                          +{token.depositAmount}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))
+                return (
+                  <button
+                    key={token.tokenId}
+                    onClick={() => handleClaim(token.tokenId)}
+                    disabled={isClaiming || isClaimed}
+                    className={`flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg border text-[10px] transition-all ${
+                      isClaimed
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
+                        : isClaiming
+                        ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400'
+                        : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer'
+                    }`}
+                  >
+                    {isClaiming ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isClaimed ? (
+                      <Check className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <Droplets className="h-4 w-4 text-blue-400" />
+                    )}
+                    <span className="font-mono font-bold text-[11px]">
+                      {token.tokenId}
+                    </span>
+                    <span className="text-[9px] text-zinc-400">
+                      +{token.depositAmount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
-
-          {/* Daily limit notice */}
-          <div className="text-[9px] text-zinc-400 text-center">
-            Daily limits apply per token. 429 if exceeded.
+          <div className="text-[9px] text-zinc-400 text-center mt-2">
+            每日领取限制，超限返回 429
           </div>
         </div>
       )}

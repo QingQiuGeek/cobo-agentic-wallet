@@ -1,7 +1,17 @@
-'use client'
+'use client';
 import { useState, useEffect } from 'react';
-import { Wallet, ChevronDown, ChevronUp, Plus, ArrowUpRight, Copy, Check, RefreshCw } from 'lucide-react';
+import {
+  Wallet,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  ArrowUpRight,
+  RefreshCw,
+  Check,
+} from 'lucide-react';
 import AddressDisplay from '../AddressDisplay';
+import DepositModal from '../modals/DepositModal';
+import TransferModal from '../modals/TransferModal';
 
 interface WalletInfo {
   uuid: string;
@@ -31,13 +41,8 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isClaiming, setIsClaiming] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  // Fetch wallet status on mount
-  useEffect(() => {
-    fetchWalletStatus();
-  }, []);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
 
   const fetchWalletStatus = async () => {
     try {
@@ -61,6 +66,38 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
       setIsLoading(false);
     }
   };
+
+  // Fetch wallet status on mount
+  useEffect(() => {
+    let cancelled = false;
+    const loadWallet = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/wallet/status');
+        const data = await response.json();
+        if (!cancelled) {
+          if (data.success && data.connected) {
+            setIsConnected(true);
+            setCurrentWallet(data.wallet);
+            setBalances(data.balances || []);
+          } else {
+            setIsConnected(false);
+            setCurrentWallet(null);
+            setBalances([]);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to fetch wallet status:', error);
+          setIsConnected(false);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    loadWallet();
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchWalletList = async () => {
     try {
@@ -107,7 +144,6 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
   const handleSwitchWallet = async (walletUuid: string) => {
     try {
       setIsLoading(true);
-      // Call API to switch wallet
       const response = await fetch('/api/wallet/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -133,54 +169,15 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
     await fetchWalletStatus();
   };
 
-  const getBalance = (token: string) => {
-    const balance = balances.find(b => b.token === token);
-    return balance ? parseFloat(balance.amount).toFixed(4) : '0.0000';
-  };
-
-  // Extract token symbol from token_id (e.g., "SETH" -> "ETH", "SETH_USDC" -> "USDC")
-  const getTokenSymbol = (tokenId: string) => {
-    if (!tokenId) return '?';
-    if (tokenId.includes('USDC')) return 'USDC';
-    if (tokenId.includes('USDT')) return 'USDT';
-    if (tokenId.includes('ETH')) return 'ETH';
-    if (tokenId.includes('SOL')) return 'SOL';
-    return tokenId.split('_').pop() || tokenId;
-  };
-
-  // Claim testnet tokens from faucet
-  const handleClaimTokens = async (tokenId: string = 'SETH') => {
-    try {
-      setIsClaiming(true);
-      const response = await fetch('/api/wallet/faucet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenId }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        // Refresh wallet status to show new balance
-        await fetchWalletStatus();
-        alert(`Testnet ${tokenId} claimed successfully!`);
-      } else {
-        alert(`Failed to claim: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Failed to claim tokens:', error);
-      alert('Failed to claim testnet tokens');
-    } finally {
-      setIsClaiming(false);
-    }
-  };
-
-  // Format balance for display
-  const formatBalance = (amount: string) => {
-    const num = parseFloat(amount || '0');
-    if (num === 0) return '0.00';
-    if (num < 0.001) return '<0.001';
-    if (num < 1) return num.toFixed(4);
-    if (num < 1000) return num.toFixed(2);
-    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  // Helper: Get token display info
+  const getTokenDisplayInfo = (tokenId: string) => {
+    const symbol = tokenId.includes('USDC') ? 'USDC'
+      : tokenId.includes('USDT') ? 'USDT'
+      : tokenId.includes('ETH') ? 'ETH'
+      : tokenId.includes('SOL') ? 'SOL'
+      : tokenId.split('_').pop() || tokenId;
+    const isTestnet = tokenId.startsWith('S') || tokenId.startsWith('T') || tokenId.startsWith('SOLDEV');
+    return { symbol, isTestnet };
   };
 
   return (
@@ -212,7 +209,7 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
       {isOpen && (
         <div id="wallet-card-content" className="pt-2 border-t border-zinc-100 dark:border-zinc-900 flex flex-col gap-3">
           {!isConnected ? (
-            /* Not connected - show create wallet */
+            /* Not connected */
             <div className="flex flex-col gap-3 py-1">
               <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                 尚未创建钱包。点击下方按钮创建一个新的 Agent 钱包。
@@ -226,7 +223,7 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
               </button>
             </div>
           ) : (
-            /* Connected - show wallet info */
+            /* Connected */
             <>
               {/* Wallet selector */}
               <div className="relative">
@@ -243,7 +240,6 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
                   <ChevronDown className="h-3 w-3 text-zinc-400" />
                 </button>
 
-                {/* Wallet list dropdown */}
                 {showWalletList && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
                     {walletList.map((wallet) => (
@@ -271,7 +267,7 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
                 )}
               </div>
 
-              {/* Addresses - EVM and Solana */}
+              {/* Addresses */}
               {currentWallet?.evmAddress && (
                 <div className="flex items-center justify-between py-1 bg-zinc-50 dark:bg-zinc-900/40 rounded px-2">
                   <span className="text-xs text-zinc-400">ETH</span>
@@ -285,46 +281,43 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
                 </div>
               )}
 
-              {/* Balances - dynamic from CAW API */}
-              <div className="grid grid-cols-2 gap-2">
-                {balances.length > 0 ? (
-                  balances.slice(0, 4).map((b, idx) => (
-                    <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/40 rounded p-2 border border-zinc-100 dark:border-zinc-900">
-                      <span className="text-[10px] text-zinc-400 block uppercase font-medium">
-                        {getTokenSymbol(b.token)}
-                      </span>
-                      <span className={`text-sm font-mono font-bold mt-0.5 block ${
-                        b.token?.includes('USDC') ? 'text-emerald-600 dark:text-emerald-400' : ''
-                      }`}>
-                        {formatBalance(b.amount)}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <>
-                    <div className="bg-zinc-50 dark:bg-zinc-900/40 rounded p-2 border border-zinc-100 dark:border-zinc-900">
-                      <span className="text-[10px] text-zinc-400 block uppercase font-medium">ETH</span>
-                      <span className="text-sm font-mono font-bold mt-0.5 block">0.0000</span>
-                    </div>
-                    <div className="bg-zinc-50 dark:bg-zinc-900/40 rounded p-2 border border-zinc-100 dark:border-zinc-900">
-                      <span className="text-[10px] text-zinc-400 block uppercase font-medium">USDC</span>
-                      <span className="text-sm font-mono font-bold mt-0.5 block text-emerald-600 dark:text-emerald-400">$0.00</span>
-                    </div>
-                  </>
-                )}
-              </div>
+              {/* Balances from CAW API */}
+              {balances.length > 0 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {balances.slice(0, 6).map((b, idx) => {
+                    const { symbol, isTestnet } = getTokenDisplayInfo(b.token);
+                    return (
+                      <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/40 rounded p-2 border border-zinc-100 dark:border-zinc-900">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-zinc-400 uppercase font-medium">{symbol}</span>
+                          {isTestnet && (
+                            <span className="text-[8px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1 rounded">测试网</span>
+                          )}
+                        </div>
+                        <span className={`text-sm font-mono font-bold mt-0.5 block ${
+                          symbol === 'USDC' ? 'text-emerald-600 dark:text-emerald-400' : ''
+                        }`}>
+                          {parseFloat(b.amount || '0').toFixed(4)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-2">
                 <button
-                  onClick={() => handleClaimTokens('SETH')}
-                  disabled={isClaiming}
-                  className="flex-1 flex items-center justify-center gap-1 text-[11px] font-medium bg-emerald-100 dark:bg-emerald-900/30 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 py-1.5 px-2 rounded border border-emerald-200 dark:border-emerald-800 transition-colors disabled:opacity-50"
+                  onClick={() => setShowDepositModal(true)}
+                  className="flex-1 flex items-center justify-center gap-1 text-[11px] font-medium bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 py-1.5 px-2 rounded border border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer"
                 >
                   <Plus className="h-3 w-3" />
-                  <span>{isClaiming ? '领取中...' : '领测试币'}</span>
+                  <span>充值</span>
                 </button>
-                <button className="flex-1 flex items-center justify-center gap-1 text-[11px] font-medium bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 py-1.5 px-2 rounded transition-colors">
+                <button
+                  onClick={() => setShowTransferModal(true)}
+                  className="flex-1 flex items-center justify-center gap-1 text-[11px] font-medium bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 py-1.5 px-2 rounded transition-colors cursor-pointer"
+                >
                   <ArrowUpRight className="h-3 w-3" />
                   <span>转账</span>
                 </button>
@@ -362,6 +355,21 @@ export default function WalletCard({ onWalletSwitch }: WalletCardProps) {
           )}
         </div>
       )}
+
+      {/* Deposit Modal */}
+      <DepositModal
+        isOpen={showDepositModal}
+        onClose={() => setShowDepositModal(false)}
+        walletAddress={currentWallet?.evmAddress || ''}
+      />
+
+      {/* Transfer Modal */}
+      <TransferModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        balances={balances}
+        onSuccess={fetchWalletStatus}
+      />
     </div>
   );
 }

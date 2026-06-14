@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Transaction } from '@/lib/types';
 import StatusBadge from '../StatusBadge';
 import AddressDisplay from '../AddressDisplay';
@@ -67,7 +67,8 @@ export default function TransactionTable({ transactions }: TransactionTableProps
               <th className="py-2 px-2 w-8 text-center">#</th>
               <th className="py-2 px-2 w-36">Time</th>
               <th className="py-2 px-2 w-16">Type</th>
-              <th className="py-2 px-2">Counterparty</th>
+              <th className="py-2 px-2">From</th>
+              <th className="py-2 px-2">To</th>
               <th className="py-2 px-2 w-14 text-center">Token</th>
               <th className="py-2 px-2 w-20 text-right">Amount</th>
               <th className="py-2 px-2 w-16 text-center">Status</th>
@@ -85,18 +86,28 @@ export default function TransactionTable({ transactions }: TransactionTableProps
                 <td className="py-1.5 px-2 text-zinc-500 select-text whitespace-nowrap">{tx.time}</td>
                 <td className="py-1.5 px-2">{getTypeBadge(tx.type)}</td>
                 <td className="py-1.5 px-2 font-semibold text-zinc-800 dark:text-zinc-200">
-                  {tx.counterparty.startsWith('0x') ? (
-                    <AddressDisplay address={tx.counterparty} />
+                  {tx.from?.startsWith('0x') ? (
+                    <AddressDisplay address={tx.from} />
                   ) : (
-                    <span className="select-text" title={tx.counterparty}>{tx.counterparty}</span>
+                    <span className="select-text" title={tx.from}>{tx.from || '—'}</span>
+                  )}
+                </td>
+                <td className="py-1.5 px-2 font-semibold text-zinc-800 dark:text-zinc-200">
+                  {tx.to?.startsWith('0x') ? (
+                    <AddressDisplay address={tx.to} />
+                  ) : (
+                    <span className="select-text" title={tx.to}>{tx.to || '—'}</span>
                   )}
                 </td>
                 <td className="py-1.5 px-2 text-center">
-                  <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${
-                    tx.token === 'USDC' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                  }`}>
-                    {tx.token}
-                  </span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${
+                      tx.token === 'USDC' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                    }`}>
+                      {tx.token}
+                    </span>
+                    <span className="text-[8px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1 rounded">测试网</span>
+                  </div>
                 </td>
                 <td className={`py-1.5 px-2 text-right font-bold select-text ${
                   tx.type === 'Deposit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-800 dark:text-zinc-100'

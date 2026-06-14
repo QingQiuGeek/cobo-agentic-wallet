@@ -7,6 +7,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { tokenId, dstAddr, amount, requestId } = body;
 
+    console.log("[/api/wallet/transfer] Request:", { tokenId, dstAddr, amount });
+
     if (!tokenId || !dstAddr || !amount) {
       return NextResponse.json(
         { success: false, error: "Missing required fields: tokenId, dstAddr, amount" },
@@ -15,13 +17,22 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await transferTokens({ tokenId, dstAddr, amount, requestId });
+    console.log("[/api/wallet/transfer] Success:", JSON.stringify(result).slice(0, 200));
 
     return NextResponse.json({ success: true, result });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+  } catch (error: any) {
+    console.error("[/api/wallet/transfer] Error:");
+    console.error("  Status:", error?.response?.status);
+    console.error("  Data:", JSON.stringify(error?.response?.data, null, 2));
+    console.error("  Message:", error?.message);
+
     return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
+      {
+        success: false,
+        error: error?.response?.data?.message || error?.response?.data?.error?.reason || error?.message || "Unknown error",
+        details: error?.response?.data,
+      },
+      { status: error?.response?.status || 500 }
     );
   }
 }

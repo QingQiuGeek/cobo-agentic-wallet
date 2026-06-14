@@ -101,12 +101,28 @@ export async function transferTokens(params: {
   tokenId: string;
   dstAddr: string;
   amount: string;
+  srcAddr?: string;
   requestId?: string;
   walletUuid?: string;
 }) {
   const uuid = params.walletUuid || currentWalletUuid;
+
+  // Get source address if not provided
+  let srcAddr = params.srcAddr;
+  if (!srcAddr) {
+    try {
+      const addressesResp = await listWalletAddresses(uuid);
+      const addrResult = addressesResp.result as any;
+      const addressList = Array.isArray(addrResult) ? addrResult : addrResult?.items || [];
+      srcAddr = addressList.find((a: any) => a.address?.startsWith('0x'))?.address || '';
+    } catch {
+      srcAddr = '';
+    }
+  }
+
   const response = await transactionsApi.transferTokens(uuid, {
     token_id: params.tokenId,
+    src_addr: srcAddr,
     dst_addr: params.dstAddr,
     amount: params.amount,
     request_id: params.requestId || `tx-${Date.now()}`,

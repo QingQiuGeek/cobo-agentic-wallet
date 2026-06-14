@@ -2,8 +2,9 @@ export interface Transaction {
   id: number;
   time: string;
   type: 'x402' | 'Transfer' | 'Deposit' | 'Register' | 'Payment';
-  counterparty: string;
-  token: 'USDC' | 'ETH';
+  from: string;
+  to: string;
+  token: 'USDC' | 'ETH' | string;
   amount: number;
   status: 'success' | 'pending' | 'failed';
   txHash: string;
