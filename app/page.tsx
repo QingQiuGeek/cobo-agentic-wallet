@@ -3,12 +3,10 @@
 import { useState, useRef, useEffect } from 'react';
 import {
 	INITIAL_CHAINS,
-	INITIAL_SERVICES,
 	INITIAL_CHAT_MESSAGES,
 } from '@/data/mockData';
 import {
 	ChainStatus,
-	PaidService,
 	Transaction,
 	ActivityLog as LogType,
 	ChatMessage as ChatMessageType,
@@ -21,7 +19,6 @@ import ThemeToggle from '@/components/ThemeToggle';
 import WalletCard from '@/components/sidebar/WalletCard';
 import FaucetCard from '@/components/sidebar/FaucetCard';
 import RegistrationCard from '@/components/sidebar/RegistrationCard';
-import ServiceList from '@/components/sidebar/ServiceList';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import RightPanel from '@/components/panel/RightPanel';
@@ -132,7 +129,6 @@ export default function Home() {
 
 	// Lists
 	const [chains, setChains] = useState<ChainStatus[]>(INITIAL_CHAINS);
-	const [services] = useState<PaidService[]>(INITIAL_SERVICES);
 	const [transactions, setTransactions] = useState<Transaction[]>([]);
 	const [logs, setLogs] = useState<LogType[]>([]);
 	const [chatMessages, setChatMessages] = useState<ChatMessageType[]>(
@@ -422,12 +418,6 @@ export default function Home() {
 		}, 1500);
 	};
 
-	// 4. Handle Service triggering
-	const handleServiceClick = (service: PaidService) => {
-		const textCommand = `Run service prediction: Settle ${service.price} ${service.pricingToken} to run "${service.name}" analytics.`;
-		handleChatMessageSend(textCommand);
-	};
-
 	// 5b. Create Wallet settings re-generation
 	const handleWalletCreate = (
 		newName: string,
@@ -650,11 +640,6 @@ export default function Home() {
 						chains={chains}
 						onInitiateRegister={initiateRegistration}
 					/>
-
-					<ServiceList
-						services={services}
-						onTriggerService={handleServiceClick}
-					/>
 				</div>
 			</aside>
 
@@ -722,6 +707,11 @@ export default function Home() {
 			<RightPanel
 				transactions={transactions}
 				logs={logs}
+				onPurchase={(service) => {
+					// Send message to agent to call the service
+					const msg = `请调用付费服务 "${service.name}"（${service.price} ${service.pricingToken}）：${service.url}`;
+					handleChatMessageSend(msg);
+				}}
 			/>
 
 			{/* 3. MODALS AND NOTIFIERS BAR */}

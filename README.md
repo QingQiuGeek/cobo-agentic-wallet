@@ -159,8 +159,17 @@ Agent requests API → 402 Payment Required → Agent auto-pays → Gets data
 | `discoverServices` | Search paid data services | Local service registry |
 | `callPaidAPI` | Call x402 paid API | CAW `payment()` |
 | `checkBalance` | Query wallet balance | CAW `listBalances()` |
-| `makePayment` | Direct token transfer | CAW `transferTokens()` |
+| `makePayment` | Direct token transfer (ETH/USDC/USDT) | CAW `transferTokens()` |
 | `getTransactionStatus` | Query transaction history | CAW `listTransactions()` |
+
+### Key Implementation Details
+
+- **Wallet**: MPC wallet via Cobo Agentic Wallet SDK (no private key exposure)
+- **Payment**: x402 protocol via CAW `payment()` API (auto-handling 402 responses)
+- **Registration**: ERC-8004 via CAW `contractCall()` + viem encoding
+- **Pact**: Fine-grained permissions (transfer, contract_call, message_sign)
+- **Audit**: Real-time SSE stream from CAW audit logs
+- **Chain**: ETH Sepolia testnet (Cobo ID: `SETH`, Chain ID: `11155111`)
 
 ### Quick Start
 

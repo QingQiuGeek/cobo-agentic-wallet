@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Transaction } from '@/lib/types';
 import StatusBadge from '../StatusBadge';
 import AddressDisplay from '../AddressDisplay';
-import { ArrowDownLeft, ArrowUpRight, Award, Receipt, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Award, Receipt } from 'lucide-react';
+import PaginatedList from './PaginatedList';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -13,7 +14,6 @@ const PAGE_SIZE = 20;
 
 export default function TransactionTable({ transactions }: TransactionTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(transactions.length / PAGE_SIZE));
   const paginatedTxs = transactions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const getTypeBadge = (type: Transaction['type']) => {
@@ -49,19 +49,18 @@ export default function TransactionTable({ transactions }: TransactionTableProps
     }
   };
 
-  if (transactions.length === 0) {
-    return (
-      <div id="no-tx-container" className="flex flex-col items-center justify-center py-10 text-zinc-400">
-        <Receipt className="h-8 w-8 mb-2 opacity-50 stroke-[1.5]" />
-        <span className="text-xs font-mono">No transaction records detected.</span>
-      </div>
-    );
-  }
-
   return (
-    <div id="transaction-table-wrapper" className="flex flex-col h-full">
-      <div className="flex-1 overflow-x-auto">
-        <table id="transaction-ledger" className="w-full text-left border-collapse">
+    <PaginatedList
+      total={transactions.length}
+      currentPage={currentPage}
+      pageSize={PAGE_SIZE}
+      onPageChange={setCurrentPage}
+      label="transactions"
+      emptyMessage="No transaction records detected"
+      emptyIcon={<Receipt className="h-8 w-8 mb-2 opacity-50 stroke-[1.5]" />}
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 bg-white dark:bg-zinc-950 z-10">
             <tr className="border-b border-zinc-200 dark:border-zinc-800 text-[10px] uppercase font-mono font-bold text-zinc-400 dark:text-zinc-500">
               <th className="py-2 px-2 w-8 text-center">#</th>
@@ -79,7 +78,6 @@ export default function TransactionTable({ transactions }: TransactionTableProps
             {paginatedTxs.map((tx, idx) => (
               <tr
                 key={tx.id}
-                id={`tx-row-${tx.id}`}
                 className="h-9 hover:bg-zinc-50/60 dark:hover:bg-zinc-900/20 transition-colors"
               >
                 <td className="py-1.5 px-2 text-center text-zinc-400 select-text">{(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
@@ -125,44 +123,6 @@ export default function TransactionTable({ transactions }: TransactionTableProps
           </tbody>
         </table>
       </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
-          <span className="text-[10px] font-mono text-zinc-400">
-            {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, transactions.length)} of {transactions.length}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`w-6 h-6 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer ${
-                  page === currentPage
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950'
-                    : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                }`}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+    </PaginatedList>
   );
 }
