@@ -1,6 +1,6 @@
 'use client'
-import React, { useState } from 'react';
-import { Fingerprint, ChevronDown, ChevronUp, Check, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
+import { Fingerprint, ChevronDown, ChevronUp, Check, AlertTriangle, ExternalLink, Loader2 } from 'lucide-react';
 import { ChainStatus } from '@/lib/types';
 
 interface RegistrationCardProps {
@@ -8,8 +8,59 @@ interface RegistrationCardProps {
   onInitiateRegister: (chain: ChainStatus) => void;
 }
 
+interface RegistrationResult {
+  txHash: string;
+  ipfsHash: string;
+  explorerUrl: string;
+  ipfsUrl: string;
+}
+
 export default function RegistrationCard({ chains, onInitiateRegister }: RegistrationCardProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const [registeringChain, setRegisteringChain] = useState<string | null>(null);
+  const [registrationResults, setRegistrationResults] = useState<Record<string, RegistrationResult>>({});
+
+  const handleRegister = async (chain: ChainStatus) => {
+    try {
+      setRegisteringChain(chain.chainId);
+      const response = await fetch('/api/wallet/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'CoboAgent',
+          description: 'AI Agent with x402 payment capabilities',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setRegistrationResults(prev => ({
+          ...prev,
+          [chain.chainId]: {
+            txHash: data.txHash,
+            ipfsHash: data.ipfsHash,
+            explorerUrl: data.explorerUrl,
+            ipfsUrl: data.ipfsUrl,
+          },
+        }));
+        // Notify parent to update chain status
+        onInitiateRegister(chain);
+      } else {
+        alert(`注册失败: ${data.error}`);
+      }
+    } catch (e) {
+      alert('注册请求失败');
+    } finally {
+      setRegisteringChain(null);
+    }
+  };
+
+  const getExplorerUrl = (chainId: string, address: string) => {
+    const explorers: Record<string, string> = {
+      'eth-sepolia': 'https://sepolia.etherscan.io/address/',
+      'base-sepolia': 'https://sepolia.basescan.org/address/',
+    };
+    return `${explorers[chainId] || 'https://sepolia.etherscan.io/address/'}${address}`;
+  };
 
   return (
     <div id="sidebar-registration-card" className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-950 shadow-sm transition-all">
@@ -77,24 +128,45 @@ export default function RegistrationCard({ chains, onInitiateRegister }: Registr
                     </div>
                     <div className="flex justify-between items-center text-[9px] text-zinc-400 mt-0.5">
                       <span className="truncate max-w-[140px]">{chain.registryAddress}</span>
-                      <a 
-                        href={`https://etherscan.io/address/${chain.registryAddress}`} 
-                        target="_blank" 
+                      <a
+                        href={getExplorerUrl(chain.chainId, chain.registryAddress)}
+                        target="_blank"
                         referrerPolicy="no-referrer"
                         className="text-blue-500 hover:underline flex items-center gap-0.5"
                       >
                         scan <ExternalLink className="h-2 w-2" />
                       </a>
                     </div>
+                    {/* Registration tx link */}
+                    {registrationResults[chain.chainId] && (
+                      <div className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-400 mt-1">
+                        <Check className="h-3 w-3" />
+                        <a
+                          href={registrationResults[chain.chainId].explorerUrl}
+                          target="_blank"
+                          className="hover:underline"
+                        >
+                          View on Explorer
+                        </a>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   chain.status === 'inactive' && (
                     <button
                       id={`id-register-btn-${chain.chainId}`}
-                      onClick={() => onInitiateRegister(chain)}
-                      className="w-full text-center bg-zinc-900 dark:bg-zinc-100 font-semibold text-white dark:text-zinc-950 py-1 rounded text-[11px] hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors cursor-pointer"
+                      onClick={() => handleRegister(chain)}
+                      disabled={registeringChain === chain.chainId}
+                      className="w-full flex items-center justify-center gap-2 text-center bg-zinc-900 dark:bg-zinc-100 font-semibold text-white dark:text-zinc-950 py-1.5 rounded text-[11px] hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors cursor-pointer disabled:opacity-50"
                     >
-                      Register Identifiers
+                      {registeringChain === chain.chainId ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>注册中...</span>
+                        </>
+                      ) : (
+                        'Register Identifiers'
+                      )}
                     </button>
                   )
                 )}
