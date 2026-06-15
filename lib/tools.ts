@@ -27,48 +27,60 @@ const discoverServices = tool({
 	),
 	execute: async (args) => {
 		const { query } = args;
-		const services = [
+
+		try {
+			// Fetch from real Bazaar API via our service endpoint
+			const params = new URLSearchParams({ limit: '20', query });
+			const response = await fetch(
+				`http://localhost:3000/api/services?${params}`,
+			);
+			const data = await response.json();
+
+			if (data.success && data.services?.length > 0) {
+				return {
+					query,
+					results: data.services.map((s: any) => ({
+						name: s.name,
+						url: s.url,
+						price: s.price,
+						token: s.pricingToken,
+						provider: s.provider,
+						description: s.description,
+						network: s.network,
+					})),
+					total: data.total || data.services.length,
+					source: data.source || 'Bazaar',
+				};
+			}
+		} catch (e) {
+			console.error('[discoverServices] Failed to fetch from API:', e);
+		}
+
+		// Fallback: return local services
+		const fallback = [
 			{
-				id: 'eth-analyzer',
 				name: 'ETH Chain Analysis',
 				url: '/api/data/eth-analysis',
 				price: '0.0001',
 				token: 'ETH',
-				provider: 'BlockIntelligence',
-				description: 'High-density historical wallet analysis & gas patterns.',
+				provider: 'Local',
+				description: 'ETH on-chain analysis report.',
 			},
 			{
-				id: 'mkt-prediction',
 				name: 'Market Prediction',
 				url: '/api/data/market-prediction',
 				price: '0.0005',
 				token: 'ETH',
-				provider: 'AlphaOracle',
-				description: 'Statistical price boundaries & sentiment insights.',
-			},
-			{
-				id: 'gas-tracker',
-				name: 'Gas Optimization API',
-				url: '/api/data/gas-optimizer',
-				price: '0.00001',
-				token: 'ETH',
-				provider: 'GasSaver DAO',
-				description: 'Predictive gas thresholds for high-speed transactions.',
+				provider: 'Local',
+				description: 'Market sentiment analysis.',
 			},
 		];
 
-		const q = query.toLowerCase();
-		const matched = services.filter(
-			(s) =>
-				s.name.toLowerCase().includes(q) ||
-				s.description.toLowerCase().includes(q) ||
-				s.id.includes(q),
-		);
-
 		return {
 			query,
-			results: matched.length > 0 ? matched : services,
-			total: matched.length > 0 ? matched.length : services.length,
+			results: fallback,
+			total: fallback.length,
+			source: 'local-fallback',
 		};
 	},
 });

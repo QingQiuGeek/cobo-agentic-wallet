@@ -110,11 +110,10 @@ export default function ServiceCard({ service, onPurchase }: ServiceCardProps) {
 					</div>
 
 					{/* Description */}
-					{service.description && (
-						<p className='text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed'>
-							{service.description}
-						</p>
-					)}
+					<span className='text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed'>
+						服务介绍：
+						{service.description ? service.description : '暂无'}
+					</span>
 
 					{/* Accepts JSON card */}
 					{service.accepts && service.accepts.length > 0 && (

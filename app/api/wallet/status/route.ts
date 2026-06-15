@@ -55,6 +55,32 @@ export async function GET() {
     const evmAddress = addressItems.find((a: any) => a.address?.startsWith('0x'))?.address || "";
     const solAddress = addressItems.find((a: any) => !a.address?.startsWith('0x'))?.address || "";
 
+    // Deduplicate balances: combine entries that display as the same symbol (e.g. ETH + SETH → ETH)
+    const getTokenSymbol = (tokenId: string) => {
+      if (tokenId.includes('USDC')) return 'USDC';
+      if (tokenId.includes('USDT')) return 'USDT';
+      if (tokenId.includes('ETH')) return 'ETH';
+      if (tokenId.includes('SOL')) return 'SOL';
+      return tokenId;
+    };
+    const balanceMap = new Map<string, { token: string; amount: number; chain: string }>();
+    for (const b of balanceItems) {
+      const tokenId = b.token_id || b.token || '';
+      const symbol = getTokenSymbol(tokenId);
+      const amount = parseFloat(b.amount || b.balance || '0');
+      const chain = b.chain_id || b.chain || '';
+      if (balanceMap.has(symbol)) {
+        balanceMap.get(symbol)!.amount += amount;
+      } else {
+        balanceMap.set(symbol, { token: tokenId, amount, chain });
+      }
+    }
+    const dedupedBalances = Array.from(balanceMap.values()).map((b) => ({
+      token: b.token,
+      amount: String(b.amount),
+      chain: b.chain,
+    }));
+
     return NextResponse.json({
       success: true,
       connected: true,
@@ -65,11 +91,7 @@ export async function GET() {
         evmAddress,
         solAddress,
       },
-      balances: balanceItems.map((b: any) => ({
-        token: b.token_id || b.token,
-        amount: b.amount || b.balance || '0',
-        chain: b.chain_id || b.chain,
-      })),
+      balances: dedupedBalances,
     });
   } catch (error: any) {
     console.error("[/api/wallet/status] Unexpected error:", error?.response?.data || error?.message || error);

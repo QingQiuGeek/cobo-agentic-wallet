@@ -101,55 +101,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // All URLs failed - return fallback services
-  console.warn("[/api/services] All discovery URLs failed, using fallback services");
-  const fallback = getFallbackServices();
+  // All URLs failed - return empty list (no mock data)
+  console.warn("[/api/services] All discovery URLs failed, returning empty list");
   return NextResponse.json({
     success: true,
-    services: fallback.slice(offset, offset + limit),
-    total: fallback.length,
+    services: [],
+    total: 0,
     limit,
     offset,
-    source: "fallback",
+    source: "none",
     warning: lastError,
   });
 }
 
-// Fallback services when Bazaar is unavailable
-function getFallbackServices() {
-  return [
-    {
-      id: "eth-analyzer",
-      name: "ETH Chain Analysis",
-      url: "/api/data/eth-analysis",
-      description: "High-density historical wallet analysis & gas patterns.",
-      provider: "BlockIntelligence",
-      icon: "Search",
-      price: "0.0001",
-      pricingToken: "ETH",
-    },
-    {
-      id: "mkt-prediction",
-      name: "Market Prediction",
-      url: "/api/data/market-prediction",
-      description: "Statistical price boundaries & sentiment insights.",
-      provider: "AlphaOracle",
-      icon: "TrendingUp",
-      price: "0.0005",
-      pricingToken: "ETH",
-    },
-    {
-      id: "gas-tracker",
-      name: "Gas Optimization API",
-      url: "/api/data/gas-optimizer",
-      description: "Predictive gas thresholds for high-speed transactions.",
-      provider: "GasSaver DAO",
-      icon: "Cpu",
-      price: "0.00001",
-      pricingToken: "ETH",
-    },
-  ];
-}
 
 // Helper: Get icon based on service name/description
 function getIconForService(name: string): string {

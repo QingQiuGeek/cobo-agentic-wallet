@@ -39,9 +39,9 @@ export default function PaginatedList({
   const endItem = Math.min(currentPage * pageSize, total);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-zinc-400">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600 mr-2" />
@@ -58,7 +58,7 @@ export default function PaginatedList({
       </div>
 
       {/* Fixed pagination bar at bottom */}
-      {totalPages > 1 && (
+      {total > 0 && (
         <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0">
           <span className="text-[10px] font-mono text-zinc-400">
             {startItem}-{endItem} of {total} {label}

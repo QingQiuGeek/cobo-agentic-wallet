@@ -156,7 +156,7 @@ export default function RightPanel({ transactions, logs, onPurchase }: RightPane
 					))}
 				</div>
 			) : (
-				<div className='flex-1 min-h-0 overflow-hidden'>
+				<div className='flex-1 min-h-0'>
 					{activeTab === 'apis' && <ServiceGrid onPurchase={onPurchase} />}
 					{activeTab === 'tx' && <TransactionTable transactions={transactions} />}
 					{activeTab === 'logs' && <ActivityLog logs={logs} />}
