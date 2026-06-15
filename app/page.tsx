@@ -1,10 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import {
-	INITIAL_CHAINS,
-	INITIAL_CHAT_MESSAGES,
-} from '@/data/mockData';
+import { INITIAL_CHAINS, INITIAL_CHAT_MESSAGES } from '@/data/mockData';
 import {
 	ChainStatus,
 	Transaction,
@@ -33,48 +30,50 @@ import Image from 'next/image';
 
 // Helper: Format ISO timestamp to YYYY-MM-DD HH:mm:ss
 function formatTime(isoString: string): string {
-  if (!isoString) return '—';
-  try {
-    const d = new Date(isoString);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  } catch {
-    return isoString;
-  }
+	if (!isoString) return '—';
+	try {
+		const d = new Date(isoString);
+		const pad = (n: number) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+	} catch {
+		return isoString;
+	}
 }
 
 // Helper: Get token symbol from token_id
 function getTokenSymbol(tokenId: string): string {
-  if (!tokenId) return '?';
-  if (tokenId.includes('USDC')) return 'USDC';
-  if (tokenId.includes('USDT')) return 'USDT';
-  if (tokenId.includes('ETH')) return 'ETH';
-  if (tokenId.includes('SOL')) return 'SOL';
-  return tokenId.split('_').pop() || tokenId;
+	if (!tokenId) return '?';
+	if (tokenId.includes('USDC')) return 'USDC';
+	if (tokenId.includes('USDT')) return 'USDT';
+	if (tokenId.includes('ETH')) return 'ETH';
+	if (tokenId.includes('SOL')) return 'SOL';
+	return tokenId.split('_').pop() || tokenId;
 }
 
 // Helper: Map audit action to category
-function getAuditCategory(action: string): 'pay' | 'transfer' | 'register' | 'query' | 'discover' {
-  if (!action) return 'query';
-  if (action.includes('transfer') || action.includes('payment')) return 'pay';
-  if (action.includes('contract')) return 'register';
-  if (action.includes('address') || action.includes('balance')) return 'query';
-  return 'query';
+function getAuditCategory(
+	action: string,
+): 'pay' | 'transfer' | 'register' | 'query' | 'discover' {
+	if (!action) return 'query';
+	if (action.includes('transfer') || action.includes('payment')) return 'pay';
+	if (action.includes('contract')) return 'register';
+	if (action.includes('address') || action.includes('balance')) return 'query';
+	return 'query';
 }
 
 // Helper: Format audit action to human-readable
 function formatAuditAction(action: string): string {
-  if (!action) return 'Operation';
-  const map: Record<string, string> = {
-    'wallet.read': '查询钱包信息',
-    'wallet.address.list': '查询钱包地址',
-    'wallet.balances': '查询余额',
-    'user_transaction.list': '查询交易记录',
-    'transfer.initiate': '发起转账',
-    'contract_call.initiate': '调用合约',
-    'payment.initiate': '发起支付',
-  };
-  return map[action] || action;
+	if (!action) return 'Operation';
+	const map: Record<string, string> = {
+		'wallet.read': '查询钱包信息',
+		'wallet.address.list': '查询钱包地址',
+		'wallet.balances': '查询余额',
+		'user_transaction.list': '查询交易记录',
+		'transfer.initiate': '发起转账',
+		'contract_call.initiate': '调用合约',
+		'payment.initiate': '发起支付',
+	};
+	return map[action] || action;
 }
 
 function AgentThinkingIndicator({ toolNames }: { toolNames: string[] }) {
@@ -97,7 +96,10 @@ function AgentThinkingIndicator({ toolNames }: { toolNames: string[] }) {
 						{uniqueTools.length} 个工具
 					</span>
 				)}
-				<span className='flex gap-0.5' aria-hidden='true'>
+				<span
+					className='flex gap-0.5'
+					aria-hidden='true'
+				>
 					<span className='animate-pulse'>.</span>
 					<span className='animate-pulse [animation-delay:120ms]'>.</span>
 					<span className='animate-pulse [animation-delay:240ms]'>.</span>
@@ -106,8 +108,12 @@ function AgentThinkingIndicator({ toolNames }: { toolNames: string[] }) {
 			{expanded && hasTools && (
 				<div className='mt-1 ml-4 border-l-2 border-zinc-200 dark:border-zinc-700 pl-3 space-y-1'>
 					{uniqueTools.map((tool, i) => (
-						<div key={i} className='text-[10px] font-mono text-zinc-500 dark:text-zinc-400'>
-							<span className='text-emerald-600 dark:text-emerald-400'>●</span> {tool}
+						<div
+							key={i}
+							className='text-[10px] font-mono text-zinc-500 dark:text-zinc-400'
+						>
+							<span className='text-emerald-600 dark:text-emerald-400'>●</span>{' '}
+							{tool}
 						</div>
 					))}
 				</div>
@@ -122,7 +128,8 @@ export default function Home() {
 		process.env.NEXT_PUBLIC_AGENT_ID || 'caw_agent_906ad75e6d7c7a6c';
 	const [agentName, setAgentName] = useState('CoboAgent');
 	const [walletAddress, setWalletAddress] = useState(
-		process.env.NEXT_PUBLIC_AGENT_WALLET_EVM_ADDRESS || '0xe6cf852aaac38144662c4f3af11c3d54197000e2'
+		process.env.NEXT_PUBLIC_AGENT_WALLET_EVM_ADDRESS ||
+			'0xe6cf852aaac38144662c4f3af11c3d54197000e2',
 	);
 	const [isWalletConnected, setIsWalletConnected] = useState(false);
 	const [walletUuid, setWalletUuid] = useState('');
@@ -180,12 +187,22 @@ export default function Home() {
 					const realTransactions = txList.map((tx: any, idx: number) => ({
 						id: idx + 1,
 						time: formatTime(tx.created_at),
-						type: tx.type === 'transfer' ? 'Transfer' : tx.type === 'deposit' ? 'Deposit' : 'x402',
+						type:
+							tx.type === 'transfer'
+								? 'Transfer'
+								: tx.type === 'deposit'
+									? 'Deposit'
+									: 'x402',
 						from: tx.src_address || '—',
 						to: tx.dst_address || '—',
 						token: getTokenSymbol(tx.token_id),
 						amount: parseFloat(tx.amount || '0'),
-						status: tx.status_display === 'Success' ? 'success' : tx.status_display === 'Pending' ? 'pending' : 'failed',
+						status:
+							tx.status_display === 'Success'
+								? 'success'
+								: tx.status_display === 'Pending'
+									? 'pending'
+									: 'failed',
 						txHash: tx.transaction_hash || tx.id,
 					}));
 					setTransactions(realTransactions);
@@ -221,9 +238,14 @@ export default function Home() {
 							time: formatTime(log.created_at),
 							category: getAuditCategory(log.action),
 							description: `${formatAuditAction(log.action)}: ${log.result || 'completed'}`,
-							status: log.result === 'allowed' ? 'success' : log.result === 'denied' ? 'failed' : 'pending',
+							status:
+								log.result === 'allowed'
+									? 'success'
+									: log.result === 'denied'
+										? 'failed'
+										: 'pending',
 						};
-						setLogs(prev => [newLog, ...prev].slice(0, 100)); // Keep max 100 logs
+						setLogs((prev) => [newLog, ...prev].slice(0, 100)); // Keep max 100 logs
 					}
 				} catch (e) {
 					console.error('SSE parse error:', e);
@@ -251,7 +273,12 @@ export default function Home() {
 						time: formatTime(log.created_at),
 						category: getAuditCategory(log.action),
 						description: `${formatAuditAction(log.action)}: ${log.result || 'completed'}`,
-						status: log.result === 'allowed' ? 'success' : log.result === 'denied' ? 'failed' : 'pending',
+						status:
+							log.result === 'allowed'
+								? 'success'
+								: log.result === 'denied'
+									? 'failed'
+									: 'pending',
 					}));
 					setLogs(realLogs);
 				}
@@ -395,7 +422,8 @@ export default function Home() {
 				id: Date.now(),
 				time: settleTime,
 				type: 'x402',
-				from: walletAddress, to: `ERC-8004 Registry (${targetChain.name})`,
+				from: walletAddress,
+				to: `ERC-8004 Registry (${targetChain.name})`,
 				token: 'ETH',
 				amount: gasCost,
 				status: 'success',
@@ -619,16 +647,14 @@ export default function Home() {
 					id='sidebar-widgets'
 					className='flex-1 overflow-y-auto p-4 flex flex-col gap-4'
 				>
-					<WalletCard
-					/>
-
+					<WalletCard />
 
 					<FaucetCard
 						isWalletConnected={isWalletConnected}
 						onClaimSuccess={() => {
-							fetch("/api/wallet/status")
-								.then(r => r.json())
-								.then(data => {
+							fetch('/api/wallet/status')
+								.then((r) => r.json())
+								.then((data) => {
 									if (data.success && data.connected) {
 										setIsWalletConnected(true);
 									}
@@ -653,20 +679,28 @@ export default function Home() {
 					id='layout-navbar'
 					className='h-14.5 border-b border-zinc-200 dark:border-zinc-800 px-5 bg-white dark:bg-zinc-950 flex items-center justify-between shrink-0'
 				>
-					<div className="flex flex-col gap-0.5">
+					<div className='flex flex-col gap-0.5'>
 						{isWalletConnected ? (
 							<>
-								<div className="flex items-center gap-2">
-									<span className="text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300">Agent_ID:</span>
-									<span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 select-all">{agentId}</span>
+								<div className='flex items-center gap-2'>
+									<span className='text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300'>
+										Agent_ID:
+									</span>
+									<span className='text-xs font-mono text-zinc-900 dark:text-zinc-100 select-all'>
+										{agentId}
+									</span>
 								</div>
-								<div className="flex items-center gap-2">
-									<span className="text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300">Wallet_UUID:</span>
-									<span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 select-all">{walletUuid || "—"}</span>
+								<div className='flex items-center gap-2'>
+									<span className='text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300'>
+										Wallet_UUID:
+									</span>
+									<span className='text-xs font-mono text-zinc-900 dark:text-zinc-100 select-all'>
+										{walletUuid || '—'}
+									</span>
 								</div>
 							</>
 						) : (
-							<span className="text-sm text-zinc-400">未连接钱包</span>
+							<span className='text-sm text-zinc-400'>未连接钱包</span>
 						)}
 					</div>
 
@@ -681,18 +715,44 @@ export default function Home() {
 					id='chat-history-viewport'
 					className='flex-1 overflow-y-auto p-5 space-y-4 bg-zinc-50/20 dark:bg-zinc-950/20'
 				>
-					{chatMessages.map((msg) =>
-						msg.sender === 'agent' && !msg.content && !msg.toolCalls?.length ? null : (
-							<ChatMessage
-								key={msg.id}
-								message={msg}
+					{chatMessages.length === 0 ? (
+						<div className='flex flex-col items-center justify-center h-full gap-4 select-none'>
+							<Image
+								src='/logo.png'
+								alt='Cobo Agentic Wallet'
+								width={150}
+								height={150}
+								className='opacity-80 dark:invert'
 							/>
-						),
+							<div className='text-center space-y-1.5'>
+								<h2 className='text-lg font-semibold text-zinc-800 dark:text-zinc-200'>
+									Cobo Agentic Wallet
+								</h2>
+								<p className='text-sm text-zinc-400 dark:text-zinc-500 max-w-xs'>
+									基于 CAW 协议，通过 x402 支付与 ERC-8004 链上注册，实现 AI Agent 原生自主支付
+								</p>
+							</div>
+						</div>
+					) : (
+						<>
+							{chatMessages.map((msg) =>
+								msg.sender === 'agent' &&
+								!msg.content &&
+								!msg.toolCalls?.length ? null : (
+									<ChatMessage
+										key={msg.id}
+										message={msg}
+									/>
+								),
+							)}
+
+							{isAgentReplying && (
+								<AgentThinkingIndicator toolNames={activeToolNames} />
+							)}
+
+							<div ref={messageEndRef} />
+						</>
 					)}
-
-					{isAgentReplying && <AgentThinkingIndicator toolNames={activeToolNames} />}
-
-					<div ref={messageEndRef} />
 				</section>
 
 				{/* Input Compositor */}

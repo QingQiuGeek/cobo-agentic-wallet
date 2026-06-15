@@ -19,8 +19,6 @@ export interface Service {
 
 interface CacheEntry {
 	services: Service[];
-	total: number;
-	source: string;
 	timestamp: number;
 }
 
@@ -31,29 +29,36 @@ interface ServiceGridProps {
 const PAGE_SIZE = 20;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-let servicesCache: CacheEntry | null = null;
+// Per-page cache keyed by "offset:query"
+const pageCache = new Map<string, CacheEntry>();
+let cachedTotal = 0;
+let cachedSource = '';
+
+function getCacheKey(offset: number, query: string) {
+	return `${offset}:${query}`;
+}
 
 export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
-	const [services, setServices] = useState<Service[]>(
-		servicesCache?.services || [],
-	);
+	const firstPage = pageCache.get(getCacheKey(0, ''));
+	const [services, setServices] = useState<Service[]>(firstPage?.services || []);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [currentPage, setCurrentPage] = useState(1);
-	const [totalItems, setTotalItems] = useState(servicesCache?.total || 0);
-	const [source, setSource] = useState(servicesCache?.source || '');
+	const [totalItems, setTotalItems] = useState(cachedTotal || 0);
+	const [source, setSource] = useState(cachedSource || '');
 	const [cacheRemaining, setCacheRemaining] = useState(0);
 	const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
 	// Cache countdown timer
 	useEffect(() => {
 		const updateCountdown = () => {
-			if (servicesCache) {
-				const elapsed = Date.now() - servicesCache.timestamp;
+			if (pageCache.size > 0) {
+				// Use the newest timestamp across all cached pages
+				const newest = Math.max(...Array.from(pageCache.values()).map(e => e.timestamp));
+				const elapsed = Date.now() - newest;
 				const remaining = Math.max(0, Math.ceil((CACHE_TTL - elapsed) / 1000));
 				setCacheRemaining(remaining);
-				// Auto-refresh when cache expires
 				if (remaining <= 0) {
 					fetchServices(0, '', true);
 				}
@@ -71,12 +76,15 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 
 	const fetchServices = useCallback(
 		async (offset = 0, query = '', force = false) => {
-			if (!force && offset === 0 && !query && servicesCache) {
-				const age = Date.now() - servicesCache.timestamp;
-				if (age < CACHE_TTL) {
-					setServices(servicesCache.services);
-					setTotalItems(servicesCache.total);
-					setSource(servicesCache.source);
+			const cacheKey = getCacheKey(offset, query);
+
+			// Check per-page cache
+			if (!force) {
+				const cached = pageCache.get(cacheKey);
+				if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+					setServices(cached.services);
+					setTotalItems(cachedTotal);
+					setSource(cachedSource);
 					setError(null);
 					return;
 				}
@@ -104,19 +112,19 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 
 				if (data.success) {
 					const newServices = data.services || [];
+					const newTotal = data.total || newServices.length || 0;
 					setServices(newServices);
-					setTotalItems(data.total || newServices.length || 0);
+					setTotalItems(newTotal);
 					setSource(data.source || '');
 					setError(null);
 
-					if (offset === 0 && !query) {
-						servicesCache = {
-							services: newServices,
-							total: data.total || newServices.length || 0,
-							source: data.source || '',
-							timestamp: Date.now(),
-						};
-					}
+					// Cache this page
+					pageCache.set(cacheKey, {
+						services: newServices,
+						timestamp: Date.now(),
+					});
+					cachedTotal = newTotal;
+					cachedSource = data.source || '';
 				} else {
 					setError(data.error || 'Failed to fetch services');
 				}
@@ -135,7 +143,7 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 		[],
 	);
 
-	const [initialized, setInitialized] = useState(!!servicesCache);
+	const [initialized, setInitialized] = useState(pageCache.size > 0);
 	if (!initialized) {
 		setInitialized(true);
 		fetchServices(0, '');
@@ -147,7 +155,9 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 	};
 
 	const handleRefresh = () => {
-		servicesCache = null;
+		pageCache.clear();
+		cachedTotal = 0;
+		cachedSource = '';
 		setCurrentPage(1);
 		setError(null);
 		fetchServices(0, '', true);
