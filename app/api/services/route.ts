@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Discovery URLs to try (in order of preference)
-const DISCOVERY_URLS = [
-  process.env.X402_DISCOVERY_URL,
-  "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources",
-  "https://facilitator.payai.network/discovery/resources",
-].filter(Boolean);
+// Server-side page cache (survives across requests in the same process)
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+interface CachedPage {
+  services: any[];
+  total: number;
+  source: string;
+  timestamp: number;
+}
+const pageCache = new Map<string, CachedPage>();
+
+// Discovery URLs
+const DISCOVERY_RESOURCE_URL = process.env.DISCOVERY_RESOURCE_URL || "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
+const DISCOVERY_SEARCH_URL = process.env.DISCOVERY_SEARCH_URL || "https://api.cdp.coinbase.com/platform/v2/x402/discovery/search";
+const DISCOVERY_FALLBACK_URL = "https://facilitator.payai.network/discovery/resources";
 
 // GET /api/services - Discover available x402 paid services from Bazaar
 export async function GET(req: NextRequest) {
@@ -14,19 +22,35 @@ export async function GET(req: NextRequest) {
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const query = url.searchParams.get("query") || "";
 
+  // Check server-side page cache
+  const cacheKey = `${offset}:${query}`;
+  const cached = pageCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log("[/api/services] Cache hit:", cacheKey);
+    return NextResponse.json({
+      success: true,
+      services: cached.services,
+      total: cached.total,
+      limit,
+      offset,
+      source: cached.source,
+    });
+  }
+
+  // Pick URL: search endpoint for queries, resource endpoint for listing
+  const urlsToTry = query
+    ? [DISCOVERY_SEARCH_URL, DISCOVERY_FALLBACK_URL]
+    : [DISCOVERY_RESOURCE_URL, DISCOVERY_FALLBACK_URL];
+
   let lastError: string = "";
 
-  for (const discoveryUrl of DISCOVERY_URLS) {
+  for (const discoveryUrl of urlsToTry) {
     try {
-      // Build request URL with pagination
-      const apiUrl = new URL(discoveryUrl!);
+      const apiUrl = new URL(discoveryUrl);
       if (query) {
-        // Use search endpoint for queries
-        apiUrl.pathname = apiUrl.pathname.replace("/resources", "/search");
         apiUrl.searchParams.set("query", query);
         apiUrl.searchParams.set("limit", String(limit));
       } else {
-        // Use resources endpoint with pagination
         apiUrl.searchParams.set("limit", String(limit));
         apiUrl.searchParams.set("offset", String(offset));
         apiUrl.searchParams.set("type", "http");
@@ -42,14 +66,12 @@ export async function GET(req: NextRequest) {
       if (!response.ok) {
         lastError = `${discoveryUrl} returned ${response.status}`;
         console.warn("[/api/services] Failed:", lastError);
-        continue; // Try next URL
+        continue;
       }
 
       const data = await response.json();
       const items = data.items || data.resources || data || [];
 
-      // Normalize the service data
-      // Bazaar API returns nested structure: { accepts: [{ resource, description, maxAmountRequired, ... }] }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const services = Array.isArray(items) ? items.map((item: any, idx: number) => {
         const accept = item.accepts?.[0] || {};
@@ -80,15 +102,16 @@ export async function GET(req: NextRequest) {
         };
       }) : [];
 
-      // Get total count from pagination info
       const total = data.pagination?.total || data.total || services.length;
 
       console.log("[/api/services] Found", services.length, "services (total:", total, ") from", discoveryUrl);
 
+      pageCache.set(cacheKey, { services, total, source: discoveryUrl, timestamp: Date.now() });
+
       return NextResponse.json({
         success: true,
-        services: services,
-        total: total,
+        services,
+        total,
         limit,
         offset,
         source: discoveryUrl,
@@ -97,11 +120,10 @@ export async function GET(req: NextRequest) {
       const errMsg = error instanceof Error ? error.message : String(error);
       lastError = `${discoveryUrl}: ${errMsg}`;
       console.warn("[/api/services] Error:", lastError);
-      continue; // Try next URL
+      continue;
     }
   }
 
-  // All URLs failed - return empty list (no mock data)
   console.warn("[/api/services] All discovery URLs failed, returning empty list");
   return NextResponse.json({
     success: true,

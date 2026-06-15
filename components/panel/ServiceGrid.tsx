@@ -49,6 +49,7 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 	const [source, setSource] = useState(cachedSource || '');
 	const [cacheRemaining, setCacheRemaining] = useState(0);
 	const intervalRef = useRef<NodeJS.Timeout | null>(null);
+	const activeRequestRef = useRef<string>('');
 
 	// Cache countdown timer
 	useEffect(() => {
@@ -77,6 +78,7 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 	const fetchServices = useCallback(
 		async (offset = 0, query = '', force = false) => {
 			const cacheKey = getCacheKey(offset, query);
+			activeRequestRef.current = cacheKey;
 
 			// Check per-page cache
 			if (!force) {
@@ -86,6 +88,7 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 					setTotalItems(cachedTotal);
 					setSource(cachedSource);
 					setError(null);
+					setIsLoading(false);
 					return;
 				}
 			}
@@ -110,6 +113,9 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 
 				const data = await response.json();
 
+				// Ignore stale responses
+				if (activeRequestRef.current !== cacheKey) return;
+
 				if (data.success) {
 					const newServices = data.services || [];
 					const newTotal = data.total || newServices.length || 0;
@@ -129,6 +135,7 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 					setError(data.error || 'Failed to fetch services');
 				}
 			} catch (err: unknown) {
+				if (activeRequestRef.current !== cacheKey) return;
 				if (err instanceof Error && err.name === 'AbortError') {
 					setError('请求超时，请重试');
 				} else {
@@ -137,7 +144,9 @@ export default function ServiceGrid({ onPurchase }: ServiceGridProps) {
 					);
 				}
 			} finally {
-				setIsLoading(false);
+				if (activeRequestRef.current === cacheKey) {
+					setIsLoading(false);
+				}
 			}
 		},
 		[],

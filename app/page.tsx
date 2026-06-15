@@ -729,7 +729,8 @@ export default function Home() {
 									Cobo Agentic Wallet
 								</h2>
 								<p className='text-sm text-zinc-400 dark:text-zinc-500 max-w-xs'>
-									基于 CAW 协议，通过 x402 支付与 ERC-8004 链上注册，实现 AI Agent 原生自主支付
+									基于 CAW 协议，通过 x402 支付与 ERC-8004 链上注册，实现 AI
+									Agent 原生自主支付
 								</p>
 							</div>
 						</div>
@@ -769,7 +770,8 @@ export default function Home() {
 				logs={logs}
 				onPurchase={(service) => {
 					// Send message to agent to call the service
-					const msg = `请调用付费服务 "${service.name}"（${service.price} ${service.pricingToken}）：${service.url}`;
+					const link = service.url ? `调用链接：${service.url}` : '无调用链接';
+					const msg = `请调用付费服务 【${service.name}】，费用：${service.price} ${service.pricingToken}，${link}；然后返回完整调用结果`;
 					handleChatMessageSend(msg);
 				}}
 			/>
